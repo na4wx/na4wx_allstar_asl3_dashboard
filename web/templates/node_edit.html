@@ -1,0 +1,92 @@
+{{define "title"}}Node {{.View.Node}}{{end}}
+{{define "content"}}
+<h1>Node {{.View.Node}}</h1>
+
+<form method="post" action="/nodes/{{.View.Node}}">
+  <div class="card">
+    <h2>Repeater behavior (rpt.conf)</h2>
+    <div class="field">
+      <label for="rxchannel">Radio interface</label>
+      <select id="rxchannel" name="rxchannel">
+        <option value="Local/pseudo" {{if eq .View.Interface "Hub (no radio)"}}selected{{end}}>Hub — no radio, links only</option>
+        <option value="SimpleUSB/{{.View.Node}}" {{if eq .View.Interface "SimpleUSB"}}selected{{end}}>SimpleUSB — CM108/119-style USB fob, no DSP</option>
+        <option value="Radio/{{.View.Node}}" {{if eq .View.Interface "USBRadio"}}selected{{end}}>USBRadio — DSP-based USB interface</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="duplex">Duplex</label>
+      <select id="duplex" name="duplex">
+        <option value="0" {{if eq .View.Duplex "0"}}selected{{end}}>0 — Half duplex, no telemetry tones or hang time</option>
+        <option value="1" {{if eq .View.Duplex "1"}}selected{{end}}>1 — Half duplex with telemetry tones and hang time; does not repeat audio (simplex node)</option>
+        <option value="2" {{if eq .View.Duplex "2"}}selected{{end}}>2 — Full duplex with telemetry tones and hang time (repeater)</option>
+        <option value="3" {{if eq .View.Duplex "3"}}selected{{end}}>3 — Full duplex with telemetry tones and hang time, but no repeated audio</option>
+        <option value="4" {{if eq .View.Duplex "4"}}selected{{end}}>4 — Full duplex with telemetry tones and hang time; repeated audio only when the autopatch is down</option>
+      </select>
+      <p class="hint">This is rpt.conf's own duplex (repeater/telemetry behavior) — not the same setting as the radio interface's own duplex below, despite the shared name.</p>
+    </div>
+  </div>
+
+  {{if .View.Radio}}
+  <div class="card">
+    <h2>Radio interface tuning ({{.View.Radio.Driver}})</h2>
+    <div class="field">
+      <label for="rxmixerset">Rx level (rxmixerset)</label>
+      <input type="number" id="rxmixerset" name="rxmixerset" min="0" max="999" value="{{.View.Radio.RxMixerSet}}">
+    </div>
+    <div class="field">
+      <label for="txmixaset">Tx level, channel A (txmixaset)</label>
+      <input type="number" id="txmixaset" name="txmixaset" min="0" max="999" value="{{.View.Radio.TxMixASet}}">
+    </div>
+    <div class="field">
+      <label for="txmixbset">Tx level, channel B (txmixbset)</label>
+      <input type="number" id="txmixbset" name="txmixbset" min="0" max="999" value="{{.View.Radio.TxMixBSet}}">
+    </div>
+    {{if eq .View.Radio.Driver "usbradio"}}
+    <div class="field">
+      <label for="driverduplex">Audio driver duplex</label>
+      <select id="driverduplex" name="driverduplex">
+        <option value="0" {{if eq .View.Radio.DriverDuplex "0"}}selected{{end}}>0 — half duplex</option>
+        <option value="1" {{if eq .View.Radio.DriverDuplex "1"}}selected{{end}}>1 — full duplex</option>
+      </select>
+      <p class="hint">usbradio.conf's own duplex setting (audio-driver level) — unrelated to rpt.conf's duplex above, despite the shared name.</p>
+    </div>
+    <div class="field">
+      <label for="rxvoiceadj">Rx voice level (rxvoiceadj)</label>
+      <input type="text" id="rxvoiceadj" name="rxvoiceadj" value="{{.View.Radio.RxVoiceAdj}}">
+    </div>
+    <div class="field">
+      <label for="txctcssadj">Tx CTCSS level (txctcssadj)</label>
+      <input type="text" id="txctcssadj" name="txctcssadj" value="{{.View.Radio.TxCtcssAdj}}">
+    </div>
+    <div class="field">
+      <label for="rxsquelchadj">Rx squelch level (rxsquelchadj)</label>
+      <input type="text" id="rxsquelchadj" name="rxsquelchadj" value="{{.View.Radio.RxSquelchAdj}}">
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="card">
+    <p class="hint">This node has no radio interface (hub/link-only) — no tuning settings to show. Switching the radio interface above to SimpleUSB or USBRadio and saving will add one.</p>
+  </div>
+  {{end}}
+
+  <div class="card">
+    <h2>HTTP registration (rpt_http_registrations.conf)</h2>
+    <p class="hint">Registers this node with a remote server (e.g. AllStarLink's own register.allstarlink.org) so other nodes can find it. Leave the server blank to remove this node's registration entirely.</p>
+    <div class="field">
+      <label for="reg_password">Password</label>
+      <input type="text" id="reg_password" name="reg_password" value="{{.Registration.Password}}">
+    </div>
+    <div class="field">
+      <label for="reg_server">Server</label>
+      <input type="text" id="reg_server" name="reg_server" value="{{.Registration.Server}}" placeholder="register.allstarlink.org">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a class="btn" href="/nodes">Cancel</a>
+  </div>
+</form>
+{{end}}
+{{template "layout" .}}

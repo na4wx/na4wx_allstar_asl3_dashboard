@@ -2,17 +2,9 @@
 {{define "content"}}
 <h1>Nodes</h1>
 
-{{if .ReadOnly}}
 <div class="card">
-  <p class="hint">Read-only for now — node creation and editing land in a later phase.</p>
+  <p class="hint">Adding a new node isn't supported yet — this page can edit existing nodes.</p>
 </div>
-{{else}}
-<div class="card">
-  <div class="actions" style="margin-top:0">
-    <a class="btn primary" href="/nodes/new">Add node</a>
-  </div>
-</div>
-{{end}}
 
 {{if .Nodes}}
 <div class="card">
@@ -28,7 +20,7 @@
           <td>{{if .Callsign}}{{.Callsign}}{{else}}<span class="muted">—</span>{{end}}</td>
           <td>{{if .Node.RXChannel}}{{.Node.RXChannel}}{{else}}<span class="muted">—</span>{{end}}</td>
           <td class="nowrap">
-            <a class="btn" href="/nodes/{{.Node.Number}}">{{if $.ReadOnly}}View{{else}}Edit{{end}}</a>
+            <a class="btn" href="/nodes/{{.Node.Number}}">Edit</a>
           </td>
         </tr>
         {{end}}

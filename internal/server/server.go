@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/auth"
@@ -51,7 +52,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir string)
 // what would fail for a page whose handler isn't wired up yet, so only
 // routes with a real handler are registered in routes() below.
 func (s *Server) parseTemplates(templatesFS fs.FS) (map[string]*template.Template, error) {
-	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_view.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
+	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_edit.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
 	funcs := template.FuncMap{"restartNeeded": func() bool { return false }}
 	out := map[string]*template.Template{}
 	for _, page := range pages {
@@ -81,11 +82,9 @@ func (s *Server) routes(staticFS fs.FS) {
 	// package's own doc comment.
 	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handlePlaceholderHome))
 
-	// Phase 2: read-only, for verifying internal/config's resolved values
-	// against a real node before any write path is built (per the
-	// approved plan). Node creation/editing is Phase 3.
 	s.mux.HandleFunc("GET /nodes", s.requireAuth(s.handleNodesIndex))
-	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeView))
+	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeEdit))
+	s.mux.HandleFunc("POST /nodes/{node}", s.requireAuth(s.handleNodeUpdate))
 }
 
 // pageData is the common template context. Handlers embed it and add
@@ -214,14 +213,14 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // data this scaffold doesn't have.
 func (s *Server) handlePlaceholderHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(`<!doctype html><html><head><title>ASL3 Dashboard</title></head><body style="font-family:sans-serif;padding:2rem"><h1>ASL3 Dashboard</h1><p>Scaffold running. Node management, System page, and Cloud Sync land in later phases.</p><p><a href="/nodes">View configured nodes</a> (read-only)</p><form method="post" action="/logout"><button type="submit">Log out</button></form></body></html>`))
+	w.Write([]byte(`<!doctype html><html><head><title>ASL3 Dashboard</title></head><body style="font-family:sans-serif;padding:2rem"><h1>ASL3 Dashboard</h1><p>Scaffold running. System page and Cloud Sync land in later phases.</p><p><a href="/nodes">Nodes</a></p><form method="post" action="/logout"><button type="submit">Log out</button></form></body></html>`))
 }
 
 // nodeRow is nodes_index.html's expected shape for one table row --
 // matches the field paths that template already references (.Node.Number,
-// .Node.RXChannel, .Callsign) so the ported template needs no changes to
-// render this Phase 2 read-only view; Task #3 fills in Callsign and wires
-// the edit link.
+// .Node.RXChannel, .Callsign). Callsign isn't populated yet -- ASL3's
+// rpt.conf has no dedicated per-node callsign field the way this template
+// assumes; deferred until a real source for it turns up.
 type nodeRow struct {
 	Node struct {
 		Number    string
@@ -237,9 +236,8 @@ func (s *Server) handleNodesIndex(w http.ResponseWriter, r *http.Request) {
 		data := flash("error", "Could not read node configuration: "+err.Error())
 		s.render(w, "nodes_index.html", struct {
 			pageData
-			Nodes    []nodeRow
-			ReadOnly bool
-		}{pageData: data, ReadOnly: true})
+			Nodes []nodeRow
+		}{pageData: data})
 		return
 	}
 
@@ -258,20 +256,140 @@ func (s *Server) handleNodesIndex(w http.ResponseWriter, r *http.Request) {
 
 	s.render(w, "nodes_index.html", struct {
 		pageData
-		Nodes    []nodeRow
-		ReadOnly bool
-	}{pageData: pageData{LoggedIn: true}, Nodes: rows, ReadOnly: true})
+		Nodes []nodeRow
+	}{pageData: pageData{LoggedIn: true}, Nodes: rows})
 }
 
-func (s *Server) handleNodeView(w http.ResponseWriter, r *http.Request) {
-	num := r.PathValue("node")
+type nodeEditData struct {
+	pageData
+	View         *config.NodeView
+	Registration config.Registration
+}
+
+func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
 	view, err := s.cfg.LoadNode(num)
+	if err != nil {
+		return nodeEditData{}, err
+	}
+	reg := config.Registration{Node: num}
+	if regs, err := s.cfg.ListRegistrations(); err != nil {
+		log.Printf("list registrations: %v", err)
+	} else {
+		for _, r := range regs {
+			if r.Node == num {
+				reg = r
+				break
+			}
+		}
+	}
+	return nodeEditData{pageData: pd, View: view, Registration: reg}, nil
+}
+
+func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	data, err := s.loadNodeEditData(num, pageData{LoggedIn: true})
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	s.render(w, "node_view.html", struct {
-		pageData
-		View *config.NodeView
-	}{pageData: pageData{LoggedIn: true}, View: view})
+	s.render(w, "node_edit.html", data)
+}
+
+var validDuplex = map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true}
+var validDriverDuplex = map[string]bool{"0": true, "1": true}
+
+func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	if _, err := s.cfg.LoadNode(num); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+
+	rxchannel := r.FormValue("rxchannel")
+	validRx := map[string]bool{
+		"Local/pseudo":     true,
+		"SimpleUSB/" + num: true,
+		"Radio/" + num:     true,
+	}
+	if !validRx[rxchannel] {
+		s.renderNodeEditErrorReq(w, r, num, "Unrecognized radio interface selection")
+		return
+	}
+	duplex := r.FormValue("duplex")
+	if !validDuplex[duplex] {
+		s.renderNodeEditErrorReq(w, r, num, "Duplex must be 0-4")
+		return
+	}
+
+	if err := s.cfg.UpdateNodeSettings(num, map[string]string{
+		"rxchannel": rxchannel,
+		"duplex":    duplex,
+	}); err != nil {
+		log.Printf("update node %s: %v", num, err)
+		s.renderNodeEditErrorReq(w, r, num, "Could not save node settings: "+err.Error())
+		return
+	}
+
+	if strings.HasPrefix(rxchannel, "SimpleUSB/") || strings.HasPrefix(rxchannel, "Radio/") {
+		updates := map[string]string{}
+		for _, key := range []string{"rxmixerset", "txmixaset", "txmixbset"} {
+			if v := strings.TrimSpace(r.FormValue(key)); v != "" {
+				updates[key] = v
+			}
+		}
+		if strings.HasPrefix(rxchannel, "Radio/") {
+			if v := r.FormValue("driverduplex"); v != "" {
+				if !validDriverDuplex[v] {
+					s.renderNodeEditErrorReq(w, r, num, "Audio driver duplex must be 0 or 1")
+					return
+				}
+				updates["duplex"] = v
+			}
+			for _, key := range []string{"rxvoiceadj", "txctcssadj", "rxsquelchadj"} {
+				if v := strings.TrimSpace(r.FormValue(key)); v != "" {
+					updates[key] = v
+				}
+			}
+		}
+		if len(updates) > 0 {
+			if err := s.cfg.UpdateRadioSettings(num, updates); err != nil {
+				log.Printf("update radio settings %s: %v", num, err)
+				s.renderNodeEditErrorReq(w, r, num, "Saved node settings, but radio tuning failed: "+err.Error())
+				return
+			}
+		}
+	}
+
+	server := strings.TrimSpace(r.FormValue("reg_server"))
+	password := r.FormValue("reg_password")
+	if server == "" {
+		if err := s.cfg.RemoveRegistration(num); err != nil {
+			log.Printf("remove registration %s: %v", num, err)
+		}
+	} else {
+		if password == "" {
+			s.renderNodeEditErrorReq(w, r, num, "A password is required to register with a server")
+			return
+		}
+		if err := s.cfg.SetRegistration(config.Registration{Node: num, Password: password, Server: server}); err != nil {
+			log.Printf("set registration %s: %v", num, err)
+			s.renderNodeEditErrorReq(w, r, num, "Saved node settings, but registration failed: "+err.Error())
+			return
+		}
+	}
+
+	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
+}
+
+func (s *Server) renderNodeEditErrorReq(w http.ResponseWriter, r *http.Request, num, msg string) {
+	data, err := s.loadNodeEditData(num, flash("error", msg))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.render(w, "node_edit.html", data)
 }
