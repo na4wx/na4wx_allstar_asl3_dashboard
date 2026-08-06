@@ -18,87 +18,7 @@
       <button type="submit" class="primary">Save name</button>
     </div>
   </form>
-</div>
-
-<div class="card">
-  <div class="label-row">
-    <h2 style="margin:0">Network connection</h2>
-    {{template "help" "How this device gets an address on your network. Most people should leave this on \"Automatic\" — your router hands out an address for you. Only switch to \"Fixed\" if you specifically need this device to always have the same address."}}
-  </div>
-  {{if .NetError}}<p class="hint">Could not read live connection info: {{.NetError}}</p>{{end}}
-  {{if .Interfaces}}
-  <div class="table-scroll" style="margin-top:0.75rem">
-    <table>
-      <thead><tr><th>Connection</th><th>Current address</th></tr></thead>
-      <tbody>
-        {{range .Interfaces}}
-        {{$name := .Name}}
-        {{range .Addresses}}
-        <tr><td>{{$name}}</td><td>{{.}}</td></tr>
-        {{end}}
-        {{end}}
-      </tbody>
-    </table>
-  </div>
-  {{end}}
-
-  <form method="post" action="/system/network" style="margin-top:1rem">
-    <div class="field">
-      <div class="label-row">
-        <label for="net_mode">Address mode</label>
-      </div>
-      <select id="net_mode" name="mode">
-        <option value="dhcp" {{if not .Static}}selected{{end}}>Automatic (recommended)</option>
-        <option value="static" {{if .Static}}selected{{end}}>Fixed address</option>
-      </select>
-      <div class="hint">Saved here but not applied until you reboot — so a mistake can't cut off your connection to this page mid-change.</div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <div class="label-row">
-          <label for="net_iface">Connection</label>
-          {{template "help" "Which network connection this applies to. \"eth0\" is the wired Ethernet port, the normal choice for a repeater that stays in one place."}}
-        </div>
-        {{if .AvailableIfaces}}
-        <select id="net_iface" name="interface">
-          {{$current := .DefaultIface}}{{if .Static}}{{$current = .Static.Interface}}{{end}}
-          {{range .AvailableIfaces}}
-          <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
-          {{end}}
-        </select>
-        {{else}}
-        <input type="text" id="net_iface" name="interface" value="{{if .Static}}{{.Static.Interface}}{{else}}{{.DefaultIface}}{{end}}">
-        <div class="hint">No connections detected. If you're testing this away from the actual node, that's expected — type the name manually (usually eth0).</div>
-        {{end}}
-      </div>
-      <div class="field">
-        <div class="label-row">
-          <label for="net_addr">Fixed address</label>
-          {{template "help" "The address to always use, plus how much of your network it covers. /24 is standard for a typical home network — if unsure, /24 is almost always right."}}
-        </div>
-        <input type="text" id="net_addr" name="address" value="{{if .Static}}{{.Static.Address}}{{end}}" placeholder="192.168.1.10/24">
-      </div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <div class="label-row">
-          <label for="net_router">Router address</label>
-          {{template "help" "Your router's address on the network — usually ends in .1, e.g. 192.168.1.1. Check your router if unsure."}}
-        </div>
-        <input type="text" id="net_router" name="router" value="{{if .Static}}{{.Static.Router}}{{end}}" placeholder="192.168.1.1">
-      </div>
-      <div class="field">
-        <div class="label-row">
-          <label for="net_dns">DNS servers</label>
-          {{template "help" "Translates domain names to addresses. 8.8.8.8 (Google) is a safe default that works for almost everyone."}}
-        </div>
-        <input type="text" id="net_dns" name="dns" value="{{if .Static}}{{.Static.DNS}}{{end}}" placeholder="8.8.8.8 8.8.4.4">
-      </div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="primary">Save network settings</button>
-    </div>
-  </form>
+  <p class="hint" style="margin-top:0.75rem">For static IP, DNS, or other network configuration, use ASL3's own Cockpit web console (usually at <code>https://&lt;this-host&gt;:9090</code>).</p>
 </div>
 
 <div class="card">
@@ -107,7 +27,7 @@
     {{template "help" "Scan for and connect this device to a WiFi network. If this device ever loses all network connectivity — neither Ethernet nor WiFi — it automatically starts broadcasting its own fallback WiFi hotspot so you can always get back in: join that hotspot from a phone or laptop and come back to this page to pick a real network."}}
   </div>
   {{if not .WiFiAvailable}}
-  <p class="hint">WiFi management isn't available on this system (no NetworkManager or wpa_supplicant/dhcpcd detected).</p>
+  <p class="hint">WiFi management isn't available on this system (NetworkManager not detected).</p>
   {{else}}
   {{if .WiFiStatusError}}<p class="hint">Could not read WiFi status: {{.WiFiStatusError}}</p>{{end}}
   <div class="label-row" style="margin-top:0.5rem">
@@ -193,81 +113,6 @@
 </div>
 
 <h2 class="section-heading">Radio hardware</h2>
-{{range .EmptyRadioFiles}}
-<div class="card" style="border-color:var(--danger)">
-  <div class="label-row">
-    <h2 style="margin:0; color:var(--danger)">{{.}} has no devices — this can block Asterisk from starting</h2>
-    {{template "help" "Found the hard way: this HamVoIP build treats any loaded channel driver having no findable device as fatal to the whole Asterisk process, even if no configured node actually uses that driver. An empty usbradio.conf or simpleusb.conf can bring down a node that only uses the other one."}}
-  </div>
-  <form method="post" action="/system/radio/{{.}}/placeholder" data-confirm="Add a placeholder device to {{.}}? Nothing will actually use it — this only exists so its channel driver can load.">
-    <div class="actions" style="margin-top:0">
-      <button type="submit" class="primary">Add placeholder device &amp; try to bring Asterisk up</button>
-    </div>
-  </form>
-</div>
-{{end}}
-
-<div class="card">
-  <div class="label-row">
-    <h2 style="margin:0">Radio devices</h2>
-    {{template "help" "Every USB sound-fob device configured across usbradio.conf and simpleusb.conf. Devices are created inline from a node's own page (Radio hardware section) — this is for adjusting an existing one's settings, or removing one that's no longer used."}}
-  </div>
-  {{if .RadioDevices}}
-  <div class="table-scroll">
-    <table>
-      <thead><tr><th>Device</th><th>File</th><th>Used by</th><th></th></tr></thead>
-      <tbody>
-        {{range .RadioDevices}}
-        <tr>
-          <td>{{.Name}}</td>
-          <td>{{.File}}</td>
-          <td>{{if .UsedByNode}}node {{.UsedByNode}}{{else}}<span class="hint">not currently used</span>{{end}}</td>
-          <td>
-            <div style="display:flex; gap:0.5rem; flex-wrap:wrap">
-              <a class="btn" href="/system/radio/{{.File}}/{{.Name}}">Edit</a>
-              {{if not .UsedByNode}}
-              <form method="post" action="/system/radio/{{.File}}/{{.Name}}/delete" data-confirm="Delete device {{.Name}} from {{.File}}? This cannot be undone." data-confirm-danger>
-                <button type="submit" class="danger">Delete</button>
-              </form>
-              {{end}}
-            </div>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-  </div>
-  {{else}}
-  <p class="hint">No radio devices set up yet — add one from a node's page (Radio hardware section).</p>
-  {{end}}
-</div>
-
-<div class="card">
-  <div class="label-row">
-    <h2 style="margin:0">SHARI USB quick setup</h2>
-    {{template "help" "One-click fill for the USB audio settings a SHARI USB interface needs, sourced from the SHARI setup documentation. This only covers the USB sound codec side (carrier detection, pre/de-emphasis, PL filter). It does not set the radio module's frequency, CTCSS tone, or squelch — those are programmed separately over a serial connection to the SA818 module, see the section below."}}
-  </div>
-  {{if .RadioDevices}}
-  <form method="post" action="/system/sharipi/apply">
-    <div class="row">
-      <div class="field">
-        <label for="sharipi_device">Which radio device is this?</label>
-        <select id="sharipi_device" name="device_ref">
-          {{range .RadioDevices}}
-          <option value="{{.File}}|{{.Name}}">{{.Label}}</option>
-          {{end}}
-        </select>
-      </div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="primary">Apply SHARI USB audio settings</button>
-    </div>
-  </form>
-  {{else}}
-  <p class="hint">No radio devices set up yet — add one from a node's page first, then come back here to apply the SHARI USB preset to it.</p>
-  {{end}}
-</div>
-
 {{$last := .SA818Last}}
 <div class="card">
   <div class="label-row">
@@ -280,7 +125,7 @@
       <div class="field">
         <div class="label-row">
           <label for="sa818_wide">Channel spacing</label>
-          {{template "help" "Narrow (12.5 kHz) is standard for most amateur repeater channels. On a real test, selecting \"Narrow\" here still resulted in the tool sending \"1\" to the module — an unexplained quirk of the tool, not something this app controls. Watch the raw output below to see what was actually sent."}}
+          {{template "help" "Narrow (12.5 kHz) is standard for most amateur repeater channels."}}
         </div>
         <select id="sa818_wide" name="wide">
           <option value="0" {{if or (not $last) (not $last.Wide)}}selected{{end}}>Narrow (12.5 kHz) — most common</option>
@@ -333,7 +178,7 @@
       <div class="field">
         <div class="label-row">
           <label for="sa818_rx_freq">Receive frequency (MHz)</label>
-          {{template "help" "Only differs from transmit frequency on a repeater with split input/output. For a simplex SHARI node, this is normally the same as transmit."}}
+          {{template "help" "Only differs from transmit frequency on a repeater with split input/output. For a simplex node, this is normally the same as transmit."}}
         </div>
         <input type="text" id="sa818_rx_freq" name="rx_freq" value="{{if $last}}{{$last.RxFreqMHz}}{{end}}" placeholder="Same as transmit if left blank">
       </div>
@@ -342,7 +187,7 @@
       <div class="field">
         <div class="label-row">
           <label for="sa818_tx_ctcss">Transmit CTCSS tone</label>
-          {{template "help" "Programs the module's own hardware to encode this tone on transmit, so other stations/repeaters requiring a PL tone will open for you. Pick by frequency — the module's underlying numeric code is set automatically. Leave at \"No tone\" unless you know your repeater requires one."}}
+          {{template "help" "Programs the module's own hardware to encode this tone on transmit, so other stations/repeaters requiring a PL tone will open for you. Leave at \"No tone\" unless you know your repeater requires one."}}
         </div>
         <select id="sa818_tx_ctcss" name="tx_ctcss">
           <option value="0000" {{if or (not $last) (eq $last.TxCTCSS "0000") (eq $last.TxCTCSS "")}}selected{{end}}>No tone (0000)</option>
@@ -352,7 +197,7 @@
       <div class="field">
         <div class="label-row">
           <label for="sa818_rx_ctcss">Receive CTCSS tone</label>
-          {{template "help" "Programs the module itself to require this tone before it reports a valid signal — a real hardware squelch gate, separate from any software CTCSS setting elsewhere in this app. Setting this (instead of leaving it at \"No tone\") is what stops the module's own squelch-tail noise burst from being mistaken for a valid signal and re-triggering the transmitter."}}
+          {{template "help" "Programs the module itself to require this tone before it reports a valid signal — a real hardware squelch gate. Setting this is what stops the module's own squelch-tail noise burst from being mistaken for a valid signal and re-triggering the transmitter."}}
         </div>
         <select id="sa818_rx_ctcss" name="rx_ctcss">
           <option value="0000" {{if or (not $last) (eq $last.RxCTCSS "0000") (eq $last.RxCTCSS "")}}selected{{end}}>No tone (0000)</option>
@@ -390,7 +235,7 @@
     <div class="field" style="flex:none">
       <div class="label-row">
         <span style="font-size:0.85rem; color:var(--text-dim)">Restart just the radio software</span>
-        {{template "help" "Restarts only the repeater/Asterisk software. Takes a few seconds, briefly interrupts the repeater, but doesn't reboot the whole device. Try this first if something seems stuck."}}
+        {{template "help" "Restarts only Asterisk (systemctl restart asterisk). Takes a few seconds, briefly interrupts the repeater, but doesn't reboot the whole device. Try this first if something seems stuck."}}
       </div>
       <form method="post" action="/system/restart-asterisk">
         <button type="submit">Restart radio software</button>
@@ -408,62 +253,6 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="label-row">
-    <h2 style="margin:0">Cloud Sync</h2>
-    {{template "help" "Optional: connect this node to the public cloud platform so it can be managed remotely, e.g. from another location. This node always dials out to the cloud URL below — it never opens any port for the cloud to reach in, so nothing needs forwarding on your router. Off by default; nothing is sent anywhere until you enable it here with an API key generated on the cloud site."}}
-  </div>
-  {{if .CloudEnabled}}<p class="hint">Last connected: {{.CloudLastConnected}}</p>{{end}}
-  <form method="post" action="/system/cloud">
-    <div class="row">
-      <div class="field">
-        <label for="cloud_enabled">Cloud Sync</label>
-        <select id="cloud_enabled" name="cloud_enabled">
-          <option value="true" {{if .CloudEnabled}}selected{{end}}>On</option>
-          <option value="false" {{if not .CloudEnabled}}selected{{end}}>Off</option>
-        </select>
-      </div>
-      <div class="field">
-        <div class="label-row">
-          <label for="cloud_url">Cloud URL</label>
-          {{template "help" "Fixed for this build of the app -- not editable here, so a mistyped or malicious URL can never redirect this node's cloud connection."}}
-        </div>
-        <input type="text" id="cloud_url" value="{{.CloudURL}}" disabled>
-      </div>
-      <div class="field">
-        <label for="cloud_api_key">API key</label>
-        <input type="password" id="cloud_api_key" name="cloud_api_key" value="{{.CloudAPIKey}}" placeholder="generated on the cloud site">
-      </div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <div class="label-row">
-          <label for="cloud_allow_remote_reboot">Allow remote restart/reboot</label>
-          {{template "help" "Separate from Cloud Sync itself being on: lets the cloud site trigger an Asterisk restart or a full device reboot. Off by default even with Cloud Sync enabled — turn this on only if you actually want that available remotely."}}
-        </div>
-        <select id="cloud_allow_remote_reboot" name="cloud_allow_remote_reboot">
-          <option value="true" {{if .CloudAllowRemoteReboot}}selected{{end}}>On</option>
-          <option value="false" {{if not .CloudAllowRemoteReboot}}selected{{end}}>Off</option>
-        </select>
-      </div>
-      <div class="field">
-        <div class="label-row">
-          <label for="cloud_allow_raw_config_edit">Allow remote raw config editing</label>
-          {{template "help" "Lets the cloud site edit this node's config files directly, the same way the Raw Config page here does. The most powerful and least guarded capability this app offers — leave this off unless you specifically need it."}}
-        </div>
-        <select id="cloud_allow_raw_config_edit" name="cloud_allow_raw_config_edit">
-          <option value="true" {{if .CloudAllowRawConfigEdit}}selected{{end}}>On</option>
-          <option value="false" {{if not .CloudAllowRawConfigEdit}}selected{{end}}>Off</option>
-        </select>
-      </div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="primary">Save Cloud Sync settings</button>
-    </div>
-  </form>
-</div>
-
-<h2 class="section-heading">Account</h2>
 <div class="card">
   <h2>Change your password</h2>
   <form method="post" action="/system/password">
@@ -485,19 +274,6 @@
       <button type="submit" class="primary">Change password</button>
     </div>
   </form>
-</div>
-
-<h2 class="section-heading">Diagnostics</h2>
-<div class="card">
-  <div class="label-row">
-    <h2 style="margin:0">Recent technical messages</h2>
-    {{template "help" "The radio software's own internal log — useful if you're troubleshooting a problem (or if someone helping you asks to see it), but not something you need to check regularly."}}
-  </div>
-  {{if .LogError}}<p class="hint">Could not read log: {{.LogError}}</p>{{end}}
-  {{if .LogLines}}
-  <pre style="max-height:320px; overflow:auto; font-size:0.8rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem; white-space:pre-wrap; margin-top:0.75rem;">{{range .LogLines}}{{.}}
-{{end}}</pre>
-  {{end}}
 </div>
 {{end}}
 {{template "layout" .}}

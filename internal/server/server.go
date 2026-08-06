@@ -8,6 +8,7 @@
 package server
 
 import (
+	"context"
 	"html/template"
 	"io/fs"
 	"log"
@@ -17,6 +18,7 @@ import (
 
 	"hamvoipconfiggui-asl3/internal/auth"
 	"hamvoipconfiggui-asl3/internal/config"
+	"hamvoipconfiggui-asl3/internal/wifi"
 )
 
 const sessionCookie = "hamvoip_gui_session"
@@ -26,13 +28,40 @@ type Server struct {
 	cfg  *config.Store
 	tmpl map[string]*template.Template
 	mux  *http.ServeMux
+
+	asteriskBin    string
+	sa818Tool      string
+	sa818StatePath string
+
+	// wifiManager owns wlan0's hotspot-fallback state machine -- see
+	// internal/wifi's package doc. Always non-nil (constructed in New);
+	// StartWiFiWatchdog swaps in the real detected backend and starts the
+	// watchdog goroutine, so a Server that never calls it (e.g. in tests)
+	// still renders the System page fine, just with WiFi management
+	// reporting "unavailable".
+	wifiManager *wifi.Manager
 }
 
 // asteriskDir overrides where Asterisk's own config files
 // (rpt.conf/usbradio.conf/simpleusb.conf) are read from; pass "" to use
-// the real ASL3 default (/etc/asterisk).
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir string) (*Server, error) {
-	s := &Server{auth: authMgr, cfg: &config.Store{Dir: asteriskDir}, mux: http.NewServeMux()}
+// the real ASL3 default (/etc/asterisk). asteriskBin is the path (or
+// bare name, if it's on PATH) to the asterisk binary, used for CLI
+// status/reload calls (not restart -- see internal/system.AsteriskRestart,
+// which goes through systemctl instead, since Asterisk is a confirmed
+// native systemd unit on ASL3). sa818Tool/sa818StatePath configure the
+// SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
+// wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
+// wlan0 fallback hotspot -- see internal/wifi's package doc.
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Tool, sa818StatePath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+	s := &Server{
+		auth:           authMgr,
+		cfg:            &config.Store{Dir: asteriskDir},
+		mux:            http.NewServeMux(),
+		asteriskBin:    asteriskBin,
+		sa818Tool:      sa818Tool,
+		sa818StatePath: sa818StatePath,
+		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
+	}
 
 	tmpl, err := s.parseTemplates(templatesFS)
 	if err != nil {
@@ -42,6 +71,17 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir string)
 
 	s.routes(staticFS)
 	return s, nil
+}
+
+// StartWiFiWatchdog detects the real WiFi backend (NetworkManager, on
+// ASL3 -- see wifi.DetectBackend) and starts the hotspot-fallback
+// watchdog goroutine. Not called from New so tests can construct a
+// Server without shelling out to systemctl/nmcli at all.
+func (s *Server) StartWiFiWatchdog(ctx context.Context) {
+	backend := wifi.DetectBackend(ctx)
+	log.Printf("wifi: detected backend %q for the hotspot-fallback watchdog", backend.Name())
+	s.wifiManager.SetBackend(backend)
+	go s.wifiManager.Run(ctx)
 }
 
 // parseTemplates parses every page template up front, same set as the
@@ -88,6 +128,15 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeEdit))
 	s.mux.HandleFunc("POST /nodes/{node}", s.requireAuth(s.handleNodeUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
+
+	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
+	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
+	s.mux.HandleFunc("POST /system/password", s.requireAuth(s.handleSystemPassword))
+	s.mux.HandleFunc("POST /system/restart-asterisk", s.requireAuth(s.handleSystemRestartAsterisk))
+	s.mux.HandleFunc("POST /system/reboot", s.requireAuth(s.handleSystemReboot))
+	s.mux.HandleFunc("POST /system/sa818/apply", s.requireAuth(s.handleSystemSA818Apply))
+	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
+	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
 }
 
 // pageData is the common template context. Handlers embed it and add
@@ -112,6 +161,18 @@ func (s *Server) render(w http.ResponseWriter, page string, data any) {
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("render %s: %v", page, err)
 	}
+}
+
+// currentUsername returns the logged-in user's name, or "" if called
+// outside a requireAuth-wrapped handler (where a valid session is
+// already guaranteed).
+func (s *Server) currentUsername(r *http.Request) string {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		return ""
+	}
+	username, _ := s.auth.ValidateSession(c.Value)
+	return username
 }
 
 // requireAuth wraps a handler so it 302s to /login (or /setup, if no
