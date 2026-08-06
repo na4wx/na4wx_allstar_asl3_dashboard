@@ -21,6 +21,7 @@ import (
 func main() {
 	addr := flag.String("addr", ":8089", "listen address")
 	authFile := flag.String("auth-file", "/etc/asl3-gui/auth.json", "path to store admin credentials")
+	asteriskDir := flag.String("asterisk-dir", "", "override where Asterisk's own config files are read from (default: /etc/asterisk)")
 	flag.Parse()
 
 	templatesFS, err := fs.Sub(web.Templates, "templates")
@@ -43,7 +44,7 @@ func main() {
 		log.Printf("no admin account configured yet; visit http://<this-host>%s/setup to create one", *addr)
 	}
 
-	srv, err := server.New(authMgr, templatesFS, staticFS)
+	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

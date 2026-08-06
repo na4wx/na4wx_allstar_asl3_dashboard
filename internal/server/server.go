@@ -15,18 +15,23 @@ import (
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/auth"
+	"hamvoipconfiggui-asl3/internal/config"
 )
 
 const sessionCookie = "hamvoip_gui_session"
 
 type Server struct {
 	auth *auth.Manager
+	cfg  *config.Store
 	tmpl map[string]*template.Template
 	mux  *http.ServeMux
 }
 
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS) (*Server, error) {
-	s := &Server{auth: authMgr, mux: http.NewServeMux()}
+// asteriskDir overrides where Asterisk's own config files
+// (rpt.conf/usbradio.conf/simpleusb.conf) are read from; pass "" to use
+// the real ASL3 default (/etc/asterisk).
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir string) (*Server, error) {
+	s := &Server{auth: authMgr, cfg: &config.Store{Dir: asteriskDir}, mux: http.NewServeMux()}
 
 	tmpl, err := s.parseTemplates(templatesFS)
 	if err != nil {
@@ -46,7 +51,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS) (*Server, error) {
 // what would fail for a page whose handler isn't wired up yet, so only
 // routes with a real handler are registered in routes() below.
 func (s *Server) parseTemplates(templatesFS fs.FS) (map[string]*template.Template, error) {
-	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
+	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_view.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
 	funcs := template.FuncMap{"restartNeeded": func() bool { return false }}
 	out := map[string]*template.Template{}
 	for _, page := range pages {
@@ -75,6 +80,12 @@ func (s *Server) routes(staticFS fs.FS) {
 	// Placeholder until Phase 2/3 bring real node data -- see this
 	// package's own doc comment.
 	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handlePlaceholderHome))
+
+	// Phase 2: read-only, for verifying internal/config's resolved values
+	// against a real node before any write path is built (per the
+	// approved plan). Node creation/editing is Phase 3.
+	s.mux.HandleFunc("GET /nodes", s.requireAuth(s.handleNodesIndex))
+	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeView))
 }
 
 // pageData is the common template context. Handlers embed it and add
@@ -203,5 +214,64 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // data this scaffold doesn't have.
 func (s *Server) handlePlaceholderHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(`<!doctype html><html><head><title>ASL3 Dashboard</title></head><body style="font-family:sans-serif;padding:2rem"><h1>ASL3 Dashboard</h1><p>Scaffold running. Node management, System page, and Cloud Sync land in later phases.</p><form method="post" action="/logout"><button type="submit">Log out</button></form></body></html>`))
+	w.Write([]byte(`<!doctype html><html><head><title>ASL3 Dashboard</title></head><body style="font-family:sans-serif;padding:2rem"><h1>ASL3 Dashboard</h1><p>Scaffold running. Node management, System page, and Cloud Sync land in later phases.</p><p><a href="/nodes">View configured nodes</a> (read-only)</p><form method="post" action="/logout"><button type="submit">Log out</button></form></body></html>`))
+}
+
+// nodeRow is nodes_index.html's expected shape for one table row --
+// matches the field paths that template already references (.Node.Number,
+// .Node.RXChannel, .Callsign) so the ported template needs no changes to
+// render this Phase 2 read-only view; Task #3 fills in Callsign and wires
+// the edit link.
+type nodeRow struct {
+	Node struct {
+		Number    string
+		RXChannel string
+	}
+	Callsign string
+}
+
+func (s *Server) handleNodesIndex(w http.ResponseWriter, r *http.Request) {
+	nums, err := s.cfg.ListNodes()
+	if err != nil {
+		log.Printf("list nodes: %v", err)
+		data := flash("error", "Could not read node configuration: "+err.Error())
+		s.render(w, "nodes_index.html", struct {
+			pageData
+			Nodes    []nodeRow
+			ReadOnly bool
+		}{pageData: data, ReadOnly: true})
+		return
+	}
+
+	rows := make([]nodeRow, 0, len(nums))
+	for _, num := range nums {
+		view, err := s.cfg.LoadNode(num)
+		if err != nil {
+			log.Printf("load node %s: %v", num, err)
+			continue
+		}
+		var row nodeRow
+		row.Node.Number = view.Node
+		row.Node.RXChannel = view.RxChannel
+		rows = append(rows, row)
+	}
+
+	s.render(w, "nodes_index.html", struct {
+		pageData
+		Nodes    []nodeRow
+		ReadOnly bool
+	}{pageData: pageData{LoggedIn: true}, Nodes: rows, ReadOnly: true})
+}
+
+func (s *Server) handleNodeView(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	view, err := s.cfg.LoadNode(num)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.render(w, "node_view.html", struct {
+		pageData
+		View *config.NodeView
+	}{pageData: pageData{LoggedIn: true}, View: view})
 }
