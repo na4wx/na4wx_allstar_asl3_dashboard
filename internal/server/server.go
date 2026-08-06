@@ -83,8 +83,11 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handlePlaceholderHome))
 
 	s.mux.HandleFunc("GET /nodes", s.requireAuth(s.handleNodesIndex))
+	s.mux.HandleFunc("GET /nodes/new", s.requireAuth(s.handleNodeNewForm))
+	s.mux.HandleFunc("POST /nodes/new", s.requireAuth(s.handleNodeNewSubmit))
 	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeEdit))
 	s.mux.HandleFunc("POST /nodes/{node}", s.requireAuth(s.handleNodeUpdate))
+	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
 }
 
 // pageData is the common template context. Handlers embed it and add
@@ -392,4 +395,77 @@ func (s *Server) renderNodeEditErrorReq(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.render(w, "node_edit.html", data)
+}
+
+type nodeNewData struct {
+	pageData
+	Number    string
+	RxChannel string
+	Duplex    string
+}
+
+func (s *Server) handleNodeNewForm(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "node_new.html", nodeNewData{pageData: pageData{LoggedIn: true}})
+}
+
+func (s *Server) handleNodeNewSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	num := strings.TrimSpace(r.FormValue("number"))
+	rxchannelChoice := r.FormValue("rxchannel") // "Local/pseudo", "SimpleUSB", or "Radio"
+	duplex := r.FormValue("duplex")
+
+	renderErr := func(msg string) {
+		data := nodeNewData{pageData: flash("error", msg), Number: num, RxChannel: rxchannelChoice, Duplex: duplex}
+		s.render(w, "node_new.html", data)
+	}
+
+	if !config.ValidNodeNumber(num) {
+		renderErr("Node number must be numeric, up to 6 digits")
+		return
+	}
+	if !validDuplex[duplex] {
+		renderErr("Duplex must be 0-4")
+		return
+	}
+
+	var rxchannel string
+	switch rxchannelChoice {
+	case "Local/pseudo", "":
+		rxchannel = "Local/pseudo"
+	case "SimpleUSB", "Radio":
+		rxchannel = rxchannelChoice + "/" + num
+	default:
+		renderErr("Unrecognized radio interface selection")
+		return
+	}
+
+	if err := s.cfg.CreateNode(num, rxchannel, duplex); err != nil {
+		log.Printf("create node %s: %v", num, err)
+		renderErr("Could not create node: " + err.Error())
+		return
+	}
+
+	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
+}
+
+func (s *Server) handleNodeDelete(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	if _, err := s.cfg.LoadNode(num); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.cfg.DeleteNode(num); err != nil {
+		log.Printf("delete node %s: %v", num, err)
+		data, loadErr := s.loadNodeEditData(num, flash("error", "Could not delete node: "+err.Error()))
+		if loadErr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		s.render(w, "node_edit.html", data)
+		return
+	}
+	http.Redirect(w, r, "/nodes", http.StatusSeeOther)
 }

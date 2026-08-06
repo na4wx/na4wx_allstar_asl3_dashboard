@@ -100,6 +100,126 @@ func RemoveRepeatingValue(path, sectionName, key, valuePrefix string) error {
 	})
 }
 
+// CreateSection appends a brand-new section to the end of the file, with
+// the given inheritance list and key/value pairs. ASL3's own convention
+// (confirmed via a real node's own /etc/asterisk/custom/README.md: "All
+// of the [####] node stanzas must be at the end of the file") is that
+// per-node stanzas live at the very end, after any #tryinclude lines --
+// so this always appends at EOF rather than guessing at a "right" spot.
+// Returns an error if the section already exists.
+func CreateSection(path, name string, inherits []string, pairs []Pair) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("asteriskconf: %w", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("asteriskconf: %w", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	hadTrailingNewline := len(lines) > 0 && lines[len(lines)-1] == ""
+	if hadTrailingNewline {
+		lines = lines[:len(lines)-1]
+	}
+
+	if _, _, err := sectionBodyRange(lines, name); err == nil {
+		return fmt.Errorf("asteriskconf: %s: section %q already exists", path, name)
+	}
+
+	header := "[" + name + "]"
+	if len(inherits) > 0 {
+		header += "(" + strings.Join(inherits, ",") + ")"
+	}
+	block := []string{"", header}
+	for _, p := range pairs {
+		op := p.Op
+		if op == "" {
+			op = "="
+		}
+		block = append(block, fmt.Sprintf("%s %s %s", p.Key, op, p.Value))
+	}
+	lines = append(lines, block...)
+
+	out := strings.Join(lines, "\n") + "\n"
+	return writeFilePreservingOwnership(path, []byte(out), info)
+}
+
+// RemoveSection deletes a section -- its header line through its body --
+// entirely. A no-op, not an error, if the section doesn't exist.
+func RemoveSection(path, name string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("asteriskconf: %w", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("asteriskconf: %w", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	hadTrailingNewline := len(lines) > 0 && lines[len(lines)-1] == ""
+	if hadTrailingNewline {
+		lines = lines[:len(lines)-1]
+	}
+
+	headerIdx, bodyEnd, found := sectionFullRange(lines, name)
+	if !found {
+		return nil
+	}
+	lines = append(lines[:headerIdx:headerIdx], lines[bodyEnd:]...)
+
+	out := strings.Join(lines, "\n")
+	if hadTrailingNewline || len(lines) > 0 {
+		out += "\n"
+	}
+	return writeFilePreservingOwnership(path, []byte(out), info)
+}
+
+// RemoveValue deletes every occurrence of key within the named section. A
+// no-op, not an error, if the section or key doesn't exist.
+func RemoveValue(path, sectionName, key string) error {
+	return editFile(path, sectionName, func(lines []string, start, end int) []string {
+		var out []string
+		out = append(out, lines[:start]...)
+		for i := start; i < end; i++ {
+			k, _, _, ok := parseKeyValue(stripComment(lines[i]))
+			if ok && k == key {
+				continue
+			}
+			out = append(out, lines[i])
+		}
+		out = append(out, lines[end:]...)
+		return out
+	})
+}
+
+// sectionFullRange returns the named section's header line index and the
+// end (exclusive) of its body -- the same boundary sectionBodyRange
+// finds, but including the header line itself, for callers that need to
+// remove a section entirely.
+func sectionFullRange(lines []string, name string) (headerIdx, bodyEnd int, found bool) {
+	for i, line := range lines {
+		stripped := strings.TrimSpace(stripComment(line))
+		if !strings.HasPrefix(stripped, "[") {
+			continue
+		}
+		sec, err := parseSectionHeader(stripped)
+		if err != nil {
+			continue
+		}
+		if found {
+			return headerIdx, i, true
+		}
+		if sec.Name == name {
+			found = true
+			headerIdx = i
+		}
+	}
+	if !found {
+		return 0, 0, false
+	}
+	return headerIdx, len(lines), true
+}
+
 func findRepeatingValueLine(lines []string, start, end int, key, valuePrefix string) int {
 	for i := start; i < end; i++ {
 		k, _, v, ok := parseKeyValue(stripComment(lines[i]))

@@ -71,10 +71,14 @@ func (s *Store) SetRegistration(reg Registration) error {
 }
 
 // RemoveRegistration deletes a node's registration, if one exists. No
-// error if it doesn't.
+// error if it doesn't, or if rpt_http_registrations.conf doesn't exist at
+// all.
 func (s *Store) RemoveRegistration(node string) error {
 	err := asteriskconf.RemoveRepeatingValue(s.registrationsPath(), "registrations", "register", node+":")
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		return fmt.Errorf("config: remove registration for node %q: %w", node, err)
 	}
 	return nil

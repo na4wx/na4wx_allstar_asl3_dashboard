@@ -86,6 +86,8 @@
   <div class="actions">
     <button type="submit" class="primary">Save</button>
     <a class="btn" href="/nodes">Cancel</a>
+    <span style="flex:1"></span>
+    <button type="submit" formaction="/nodes/{{.View.Node}}/delete" class="danger" data-confirm="Delete node {{.View.Node}}? This removes it from rpt.conf, usbradio.conf, simpleusb.conf, and any HTTP registration. This cannot be undone." data-confirm-danger>Delete node</button>
   </div>
 </form>
 {{end}}
