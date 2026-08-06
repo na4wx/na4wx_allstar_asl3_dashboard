@@ -72,14 +72,14 @@
 
   <div class="card">
     <h2>HTTP registration (rpt_http_registrations.conf)</h2>
-    <p class="hint">Registers this node with a remote server (e.g. AllStarLink's own register.allstarlink.org) so other nodes can find it. Leave the server blank to remove this node's registration entirely.</p>
+    <p class="hint">Registers this node with a remote server so other nodes can find it. Enter your AllStarLink registration password to register (or update); leave the password blank to remove this node's registration entirely.</p>
     <div class="field">
       <label for="reg_password">Password</label>
       <input type="text" id="reg_password" name="reg_password" value="{{.Registration.Password}}">
     </div>
     <div class="field">
       <label for="reg_server">Server</label>
-      <input type="text" id="reg_server" name="reg_server" value="{{.Registration.Server}}" placeholder="register.allstarlink.org">
+      <input type="text" id="reg_server" name="reg_server" value="{{if .Registration.Server}}{{.Registration.Server}}{{else}}register.allstarlink.org{{end}}">
     </div>
   </div>
 

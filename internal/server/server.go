@@ -369,13 +369,19 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 
 	server := strings.TrimSpace(r.FormValue("reg_server"))
 	password := r.FormValue("reg_password")
-	if server == "" {
+	// The server field is pre-filled with register.allstarlink.org by
+	// default (see node_edit.html), so it can't double as an "I don't
+	// want registration" signal the way an empty field normally would --
+	// password is the field that actually decides whether a registration
+	// exists: leave it blank to not register (or to remove an existing
+	// one), fill it in to register (or update) using the server given.
+	if password == "" {
 		if err := s.cfg.RemoveRegistration(num); err != nil {
 			log.Printf("remove registration %s: %v", num, err)
 		}
 	} else {
-		if password == "" {
-			s.renderNodeEditErrorReq(w, r, num, "A password is required to register with a server")
+		if server == "" {
+			s.renderNodeEditErrorReq(w, r, num, "A server is required to register")
 			return
 		}
 		if err := s.cfg.SetRegistration(config.Registration{Node: num, Password: password, Server: server}); err != nil {
