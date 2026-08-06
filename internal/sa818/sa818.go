@@ -1,157 +1,114 @@
-// Package sa818 drives ASL3's own built-in `sa818` command-line tool to
-// program an SA818/DRA818 VHF/UHF radio module (as used on a SHARI USB
-// node) over its serial connection, without reimplementing the module's
-// AT-command protocol directly.
+// Package sa818 programs an SA818/DRA818 VHF/UHF radio module (as used
+// on a SHARI USB node) directly over its serial AT-command connection,
+// without shelling out to any external tool.
 //
-// This is NOT HamVoIP's "818-prog" (a Python script baked into that
-// distro's own disk image, absent on ASL3 entirely) -- confirmed on a
-// real ASL3 node that it ships its own, different `sa818` tool at
-// /usr/bin/sa818 (see AllStarLink's own docs,
-// allstarlink.github.io/adv-topics/sa818modules/). The two are
-// structurally different, not just differently named: sa818 takes
-// command-line flags across three independent subcommands (radio,
-// volume, filters) rather than answering one interactive prompt
-// sequence; CTCSS is given as the tone's raw Hz value (e.g. "94.8"),
-// not 818-prog's 4-digit module code; squelch ranges 0-8 (818-prog: 1-9)
-// and volume ranges 1-8 (818-prog: 0-8), confirmed via
-// `sa818 radio --help`/`sa818 volume --help` on a live node; and
-// frequency is given as a single receive frequency plus a MHz shift
-// ("--offset"), rather than independent transmit/receive values.
+// ASL3 ships its own sa818/sa818-menu tools (confirmed on a real node,
+// /usr/bin/sa818 and /usr/bin/sa818-menu -- NOT HamVoIP's "818-prog", a
+// different, unrelated Python script baked into that distro's own disk
+// image, which ASL3 doesn't have at all). This package was originally
+// built to shell out to ASL3's own sa818 CLI tool the same way. That
+// approach was abandoned after confirming on real hardware that
+// automated, scripted invocations of that tool reliably fail to
+// actually reprogram the module -- despite the tool itself reporting a
+// genuine, device-acknowledged "OK" reply, and despite sa818-menu (a
+// bash wrapper that, read in full, builds and sends the exact same
+// AT+DMOSETGROUP command for an equivalent setting) reportedly working.
+// The real cause of that discrepancy was never identified. Rather than
+// build on unexplained behavior, this package speaks the module's own
+// AT-command protocol directly -- see serial.go.
 package sa818
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
-	"strconv"
 	"strings"
-	"time"
 )
 
-// Settings mirrors ASL3's own sa818 tool's flags. JSON tags exist for
-// internal/cloudagent's relayed sa818.program action; they have no
-// effect on this struct's existing Go-field-name access elsewhere.
+// Settings is what an operator can configure through this app. JSON
+// tags exist for internal/cloudagent's relayed sa818.program action;
+// they have no effect on this struct's existing Go-field-name access
+// elsewhere.
 type Settings struct {
-	Wide bool `json:"wide"` // sa818's own "--bw": false=0 (narrow, 12.5kHz), true=1 (wide, 25kHz)
+	Wide bool `json:"wide"` // false = narrow (12.5kHz), true = wide (25kHz)
 
-	// TxFreqMHz/RxFreqMHz are independent transmit/receive frequencies,
-	// matching this app's own form -- sa818 itself only takes one
-	// frequency (confirmed: the receive frequency, via "--frequency")
-	// plus a MHz "--offset" describing the shift to transmit; Program
-	// computes that offset from these two fields.
-	TxFreqMHz string `json:"txFreqMHz"`
+	TxFreqMHz string `json:"txFreqMHz"` // pre-formatted "xxx.xxxx"
 	RxFreqMHz string `json:"rxFreqMHz"`
 
-	// TxCTCSS/RxCTCSS are the tone's raw Hz value (e.g. "94.8", from
-	// CTCSSTones) or "" for no tone -- sa818's own "--ctcss" flag takes
-	// these directly, unlike 818-prog's 4-digit code.
-	TxCTCSS string `json:"txCTCSS"`
+	TxCTCSS string `json:"txCTCSS"` // Hz value from CTCSSTones, or "" for no tone
 	RxCTCSS string `json:"rxCTCSS"`
 
-	Squelch int `json:"squelch"` // sa818's own range: 0-8
-	Volume  int `json:"volume"`  // sa818's own range: 1-8
+	Squelch int `json:"squelch"` // 0-8
+	Volume  int `json:"volume"`  // 1-8
 
 	PreDeEmphasis  bool `json:"preDeEmphasis"`
 	HighPassFilter bool `json:"highPassFilter"`
 	LowPassFilter  bool `json:"lowPassFilter"`
 }
 
-func enableDisable(b bool) string {
+// enableDisableCode encodes a filter flag the way the module's own
+// AT+SETFILTER command expects -- confirmed directly against the
+// reference tool's source (its enabledisable() helper: "Enable" -> 0,
+// "Disable" -> 1). The inverted-looking convention (0 means on) is the
+// module's own, not a mistake here.
+func enableDisableCode(b bool) string {
 	if b {
-		return "Enable"
+		return "0"
 	}
-	return "Disable"
+	return "1"
 }
 
-// ctcssArg builds sa818's own "--ctcss tx,rx" value, or "" to omit the
-// flag entirely when neither side wants a tone ("None" is the tool's own
-// documented default, so there's no need to pass it explicitly in that
-// case). When only one side wants a tone, the other is spelled out as
-// the literal "None" -- confirmed via `sa818 radio --help`'s own
-// example ("--ctcss 94.8,127.3") as the documented way to give
-// independent transmit/receive values.
-func ctcssArg(tx, rx string) string {
-	if tx == "" && rx == "" {
-		return ""
-	}
-	t, r := tx, rx
-	if t == "" {
-		t = "None"
-	}
-	if r == "" {
-		r = "None"
-	}
-	return t + "," + r
-}
-
-// offsetMHz computes sa818's own "--offset" (transmit minus receive, in
-// MHz) from this app's independently-specified Tx/Rx frequencies.
-func offsetMHz(txFreqMHz, rxFreqMHz string) (string, error) {
-	tx, err := strconv.ParseFloat(txFreqMHz, 64)
-	if err != nil {
-		return "", fmt.Errorf("tx frequency: %w", err)
-	}
-	rx, err := strconv.ParseFloat(rxFreqMHz, 64)
-	if err != nil {
-		return "", fmt.Errorf("rx frequency: %w", err)
-	}
-	return strconv.FormatFloat(tx-rx, 'f', 4, 64), nil
-}
-
-// Program runs ASL3's own sa818 tool across its three independent
-// subcommands (radio, volume, filters) to apply s, stopping at the first
-// one that fails to even run (e.g. the binary isn't on PATH) rather than
-// piling on repeat failures, and returns their combined stdout+stderr
-// alongside a best-effort success verdict.
+// Program connects to the module (over portName, or by probing the
+// usual candidate ports if portName is "") and applies s -- radio
+// (frequency/tone/squelch), volume, and filters, as three AT commands
+// over one connection -- returning a human-readable transcript of what
+// was sent and received, and a best-effort success verdict (every
+// command must have gotten the module's own documented "OK" reply).
 //
 // This is write-only: the SA818/DRA818 AT command set has no documented
 // way to query the module's currently-programmed frequency/tone/squelch
 // back out, so there's nothing to read from the hardware itself.
-//
-// Unlike 818-prog (confirmed, on real hardware, to exit 0 even when the
-// module itself rejects a setting -- success there has to be judged from
-// its output text, not its exit code), sa818's own exit code is trusted
-// here to reflect success/failure. That contract -- specifically,
-// whether sa818 also exits 0 on a module-level rejection the way
-// 818-prog does -- has NOT yet been confirmed against a real rejection
-// on real hardware.
-func Program(ctx context.Context, tool string, s Settings) (output string, ok bool, err error) {
-	offset, offsetErr := offsetMHz(s.TxFreqMHz, s.RxFreqMHz)
-	if offsetErr != nil {
-		return "", false, offsetErr
+func Program(ctx context.Context, portName string, s Settings) (output string, ok bool, err error) {
+	txTone, err := ctcssCode(s.TxCTCSS)
+	if err != nil {
+		return "", false, fmt.Errorf("transmit CTCSS: %w", err)
 	}
+	rxTone, err := ctcssCode(s.RxCTCSS)
+	if err != nil {
+		return "", false, fmt.Errorf("receive CTCSS: %w", err)
+	}
+
+	r, err := connect(portName)
+	if err != nil {
+		return "", false, err
+	}
+	defer r.close()
+
+	var out strings.Builder
+	record := func(cmd, reply string, exErr error) bool {
+		fmt.Fprintf(&out, "> %s\n", cmd)
+		if exErr != nil {
+			fmt.Fprintf(&out, "< (error: %v)\n", exErr)
+			return false
+		}
+		fmt.Fprintf(&out, "< %s\n", reply)
+		return true
+	}
+
 	bw := "0"
 	if s.Wide {
 		bw = "1"
 	}
-	radioArgs := []string{"radio", "--frequency=" + s.RxFreqMHz, "--offset=" + offset, "--bw=" + bw, "--squelch=" + strconv.Itoa(s.Squelch)}
-	if ctcss := ctcssArg(s.TxCTCSS, s.RxCTCSS); ctcss != "" {
-		radioArgs = append(radioArgs, "--ctcss="+ctcss)
-	}
-	volumeArgs := []string{"volume", "--level=" + strconv.Itoa(s.Volume)}
-	filterArgs := []string{"filters", "--emphasis=" + enableDisable(s.PreDeEmphasis), "--highpass=" + enableDisable(s.HighPassFilter), "--lowpass=" + enableDisable(s.LowPassFilter)}
+	groupCmd := fmt.Sprintf("%s=%s,%s,%s,%s,%d,%s", setGroupCmd, bw, s.TxFreqMHz, s.RxFreqMHz, txTone, s.Squelch, rxTone)
+	reply, exErr := r.exchange(groupCmd, settleDelay)
+	okRadio := record(groupCmd, reply, exErr) && reply == "+DMOSETGROUP:0"
 
-	var out bytes.Buffer
-	run := func(args []string) bool {
-		if err != nil {
-			return false // a prior subcommand already failed to run -- don't pile on
-		}
-		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel()
-		c := exec.CommandContext(cctx, tool, args...)
-		c.Stdout = &out
-		c.Stderr = &out
-		if runErr := c.Run(); runErr != nil {
-			err = fmt.Errorf("%s %s: %w", tool, strings.Join(args, " "), runErr)
-			return false
-		}
-		return true
-	}
+	volumeCmd := fmt.Sprintf("%s=%d", setVolumeCmd, s.Volume)
+	reply, exErr = r.exchange(volumeCmd, settleDelay)
+	okVolume := record(volumeCmd, reply, exErr) && reply == "+DMOSETVOLUME:0"
 
-	okRadio := run(radioArgs)
-	okVolume := run(volumeArgs)
-	okFilters := run(filterArgs)
+	filterCmd := fmt.Sprintf("%s=%s,%s,%s", setFilterCmd, enableDisableCode(s.PreDeEmphasis), enableDisableCode(s.HighPassFilter), enableDisableCode(s.LowPassFilter))
+	reply, exErr = r.exchange(filterCmd, settleDelay)
+	okFilters := record(filterCmd, reply, exErr) && reply == "+DMOSETFILTER:0"
 
-	return out.String(), okRadio && okVolume && okFilters, err
+	return out.String(), okRadio && okVolume && okFilters, nil
 }

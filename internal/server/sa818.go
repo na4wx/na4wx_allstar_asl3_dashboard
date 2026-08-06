@@ -109,12 +109,12 @@ func (s *Server) handleSystemSA818Apply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	output, ok, err := sa818.Program(r.Context(), s.sa818Tool, settings)
+	output, ok, err := sa818.Program(r.Context(), s.sa818Port, settings)
 
 	if s.sa818StatePath != "" {
 		last := &sa818.LastApplied{
 			Settings:  settings,
-			Tool:      s.sa818Tool,
+			Port:      s.sa818Port,
 			AppliedAt: time.Now(),
 			Success:   ok,
 			Output:    output,
@@ -123,12 +123,12 @@ func (s *Server) handleSystemSA818Apply(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err != nil {
-		s.renderSystemPage(w, r, flash("error", "Could not run "+s.sa818Tool+": "+err.Error()))
+		s.renderSystemPage(w, r, flash("error", "Could not reach the radio module: "+err.Error()))
 		return
 	}
 	if !ok {
-		s.renderSystemPage(w, r, flash("error", "The radio module rejected these settings — see the raw tool output below the form for details."))
+		s.renderSystemPage(w, r, flash("error", "The radio module rejected these settings — see the raw transcript below the form for details."))
 		return
 	}
-	s.renderSystemPage(w, r, flash("ok", "Sent to the radio module — see the raw tool output below the form to confirm."))
+	s.renderSystemPage(w, r, flash("ok", "Sent to the radio module — see the raw transcript below the form to confirm."))
 }

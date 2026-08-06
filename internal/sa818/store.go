@@ -14,7 +14,7 @@ import (
 // written from here, not confirmed live state.
 type LastApplied struct {
 	Settings
-	Tool      string    `json:"tool"`
+	Port      string    `json:"port"` // "" means auto-detected; see Program
 	AppliedAt time.Time `json:"applied_at"`
 	Success   bool      `json:"success"`
 	Output    string    `json:"output"`

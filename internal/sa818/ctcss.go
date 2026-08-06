@@ -1,11 +1,11 @@
 package sa818
 
-// CTCSSTones is the SA818/DRA818's own fixed 38-tone CTCSS table.
-// Confirmed to exactly match the tone list printed by ASL3's own real
-// `sa818 radio --help` on a live node -- unlike 818-prog (which encodes
-// each tone as a 4-digit index into this same table), ASL3's sa818 tool
-// takes the Hz value itself directly as a string (e.g. "94.8"), so
-// there's no code/index concept to carry here at all.
+import "fmt"
+
+// CTCSSTones is the SA818/DRA818's own fixed 38-tone CTCSS table --
+// confirmed directly against ASL3's own /usr/bin/sa818 tool's own CTCSS
+// tuple (its source was read on a real node), index 1-38 (its own index
+// 0 is the literal string "None").
 var CTCSSTones = []string{
 	"67.0", "71.9", "74.4", "77.0", "79.7", "82.5", "85.4", "88.5", "91.5", "94.8",
 	"97.4", "100.0", "103.5", "107.2", "110.9", "114.8", "118.8", "123.0", "127.3", "131.8",
@@ -25,4 +25,21 @@ func ValidCTCSSHz(hz string) bool {
 		}
 	}
 	return false
+}
+
+// ctcssCode returns the module's own 4-digit AT+DMOSETGROUP tone index
+// for hz (e.g. "100.0" -> "0012"), or "0000" for "" (no tone) -- this is
+// the module's real wire format for this field, confirmed directly
+// against the reference tool's own source (its CTCSS tuple, indexed via
+// CTCSS.index(...) then zero-padded to 4 digits).
+func ctcssCode(hz string) (string, error) {
+	if hz == "" {
+		return "0000", nil
+	}
+	for i, t := range CTCSSTones {
+		if t == hz {
+			return fmt.Sprintf("%04d", i+1), nil
+		}
+	}
+	return "", fmt.Errorf("%q is not one of the module's standard CTCSS tones", hz)
 }

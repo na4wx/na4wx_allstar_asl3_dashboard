@@ -30,7 +30,7 @@ type Server struct {
 	mux  *http.ServeMux
 
 	asteriskBin    string
-	sa818Tool      string
+	sa818Port      string
 	sa818StatePath string
 
 	// wifiManager owns wlan0's hotspot-fallback state machine -- see
@@ -48,17 +48,17 @@ type Server struct {
 // bare name, if it's on PATH) to the asterisk binary, used for CLI
 // status/reload calls (not restart -- see internal/system.AsteriskRestart,
 // which goes through systemctl instead, since Asterisk is a confirmed
-// native systemd unit on ASL3). sa818Tool/sa818StatePath configure the
+// native systemd unit on ASL3). sa818Port/sa818StatePath configure the
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
 // wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
 // wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Tool, sa818StatePath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
 	s := &Server{
 		auth:           authMgr,
 		cfg:            &config.Store{Dir: asteriskDir},
 		mux:            http.NewServeMux(),
 		asteriskBin:    asteriskBin,
-		sa818Tool:      sa818Tool,
+		sa818Port:      sa818Port,
 		sa818StatePath: sa818StatePath,
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 	}

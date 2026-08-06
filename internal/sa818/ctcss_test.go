@@ -46,3 +46,32 @@ func TestValidCTCSSHz(t *testing.T) {
 		}
 	}
 }
+
+// TestCtcssCodeKnownPoints pins the exact 4-digit wire encoding the
+// module's own AT+DMOSETGROUP command expects, confirmed directly
+// against the reference tool's own CTCSS tuple (index 0 = "None",
+// so CTCSSTones[i] is wire code i+1).
+func TestCtcssCodeKnownPoints(t *testing.T) {
+	cases := []struct{ hz, code string }{
+		{"", "0000"},
+		{"67.0", "0001"},
+		{"100.0", "0012"},
+		{"250.3", "0038"},
+	}
+	for _, c := range cases {
+		got, err := ctcssCode(c.hz)
+		if err != nil {
+			t.Errorf("ctcssCode(%q) error = %v", c.hz, err)
+			continue
+		}
+		if got != c.code {
+			t.Errorf("ctcssCode(%q) = %q, want %q", c.hz, got, c.code)
+		}
+	}
+}
+
+func TestCtcssCodeUnknownToneErrors(t *testing.T) {
+	if _, err := ctcssCode("196.6"); err == nil {
+		t.Error("ctcssCode(196.6) error = nil, want an error -- not one of the module's tones")
+	}
+}

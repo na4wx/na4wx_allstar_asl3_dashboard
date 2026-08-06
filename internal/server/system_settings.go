@@ -27,7 +27,7 @@ type systemPageData struct {
 	pageData
 	Hostname string
 
-	SA818Tool    string
+	SA818Port    string
 	SA818Last    *sa818.LastApplied
 	CTCSSOptions []ctcssOption
 
@@ -63,7 +63,7 @@ func (s *Server) renderSystemPageWithNetworks(w http.ResponseWriter, r *http.Req
 		Hostname: hostname,
 	}
 
-	data.SA818Tool = s.sa818Tool
+	data.SA818Port = s.sa818Port
 	if s.sa818StatePath != "" {
 		if last, err := sa818.LoadLast(s.sa818StatePath); err == nil {
 			data.SA818Last = last
