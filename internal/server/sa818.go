@@ -9,9 +9,12 @@ import (
 	"hamvoipconfiggui-asl3/internal/sa818"
 )
 
-// ctcssOption is one entry in the CTCSS dropdowns: the module's own
-// 4-digit code paired with the Hz value it's labeled with, matching
-// what the module's own manual documents as its Tx_CTCSS/Rx_CTCSS index.
+// ctcssOption is one entry in the CTCSS dropdowns. Unlike HamVoIP's
+// version of this file (which paired a Hz value with 818-prog's own
+// 4-digit module code), ASL3's sa818 tool takes the Hz value itself
+// directly as its --ctcss argument -- so Code and Hz are the same
+// string here; Code exists only so the template (which submits
+// "value={{.Code}}") doesn't need to change.
 type ctcssOption struct {
 	Code string
 	Hz   string
@@ -20,16 +23,15 @@ type ctcssOption struct {
 func ctcssOptions() []ctcssOption {
 	opts := make([]ctcssOption, len(sa818.CTCSSTones))
 	for i, hz := range sa818.CTCSSTones {
-		opts[i] = ctcssOption{Code: sa818.CTCSSCode(hz), Hz: hz}
+		opts[i] = ctcssOption{Code: hz, Hz: hz}
 	}
 	return opts
 }
 
 // sa818SettingsFromForm builds a sa818.Settings from the submitted form:
-// frequencies need all four decimal places the underlying tool's own
-// prompt asks for (xxx.xxxx), and CTCSS fields need an explicit "0000"
-// rather than being left blank when no tone is wanted. Returns a
-// non-empty error string if the input can't be used.
+// frequencies need all four decimal places sa818's own "--frequency"
+// flag expects (xxx.xxxx). Returns a non-empty error string if the input
+// can't be used.
 func sa818SettingsFromForm(r *http.Request) (sa818.Settings, string) {
 	var s sa818.Settings
 	s.Wide = r.FormValue("wide") == "1"
@@ -52,29 +54,27 @@ func sa818SettingsFromForm(r *http.Request) (sa818.Settings, string) {
 	}
 
 	s.TxCTCSS = strings.TrimSpace(r.FormValue("tx_ctcss"))
-	if s.TxCTCSS == "" {
-		s.TxCTCSS = "0000"
-	}
-	if !sa818.ValidCTCSSCode(s.TxCTCSS) {
+	if !sa818.ValidCTCSSHz(s.TxCTCSS) {
 		return s, "Transmit CTCSS: not a value from the tone list"
 	}
 	s.RxCTCSS = strings.TrimSpace(r.FormValue("rx_ctcss"))
-	if s.RxCTCSS == "" {
-		s.RxCTCSS = "0000"
-	}
-	if !sa818.ValidCTCSSCode(s.RxCTCSS) {
+	if !sa818.ValidCTCSSHz(s.RxCTCSS) {
 		return s, "Receive CTCSS: not a value from the tone list"
 	}
 
+	// Squelch 0-8 and volume 1-8 are sa818's own real ranges, confirmed
+	// via `sa818 radio --help`/`sa818 volume --help` on a live ASL3
+	// node -- NOT 818-prog's ranges (squelch 1-9, volume 0-8), which
+	// this form used before that was confirmed.
 	squelch, err := strconv.Atoi(r.FormValue("squelch"))
-	if err != nil || squelch < 1 || squelch > 9 {
-		return s, "Squelch must be a number from 1 to 9"
+	if err != nil || squelch < 0 || squelch > 8 {
+		return s, "Squelch must be a number from 0 to 8"
 	}
 	s.Squelch = squelch
 
 	volume, err := strconv.Atoi(r.FormValue("volume"))
-	if err != nil || volume < 0 || volume > 8 {
-		return s, "Volume must be a number from 0 to 8"
+	if err != nil || volume < 1 || volume > 8 {
+		return s, "Volume must be a number from 1 to 8"
 	}
 	s.Volume = volume
 

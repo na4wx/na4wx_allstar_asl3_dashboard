@@ -25,7 +25,7 @@ func main() {
 	authFile := flag.String("auth-file", "/etc/asl3-gui/auth.json", "path to store admin credentials")
 	asteriskDir := flag.String("asterisk-dir", "", "override where Asterisk's own config files are read from (default: /etc/asterisk)")
 	asteriskBin := flag.String("asterisk-bin", "asterisk", "path to the asterisk binary, or bare name if it's on PATH")
-	sa818Tool := flag.String("sa818-tool", "818-prog", "path to the 818-prog SA818/DRA818 radio module programmer, or bare name if it's on PATH")
+	sa818Tool := flag.String("sa818-tool", "sa818", "path to ASL3's own sa818 SA818/DRA818 radio module programmer, or bare name if it's on PATH (NOT HamVoIP's 818-prog, a different tool ASL3 doesn't ship)")
 	sa818StatePath := flag.String("sa818-state-file", "/etc/asl3-gui/sa818-last.json", "path to store the last settings sent to the SA818/DRA818 module")
 	wifiHotspotSSID := flag.String("wifi-hotspot-ssid", "ASL3 Dashboard", "SSID this node broadcasts as a fallback WiFi hotspot on wlan0 the moment it has no active network connection")
 	wifiHotspotPassword := flag.String("wifi-hotspot-password", "", "password for the fallback WiFi hotspot above (WPA2, 8-63 characters); empty broadcasts it open")

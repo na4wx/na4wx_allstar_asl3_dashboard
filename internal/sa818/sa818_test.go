@@ -4,86 +4,180 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-func TestAnswersOrderMatchesPromptSequence(t *testing.T) {
-	s := Settings{
-		Wide:           false,
-		TxFreqMHz:      "446.1000",
-		RxFreqMHz:      "446.1000",
-		TxCTCSS:        "0000",
-		RxCTCSS:        "0000",
-		Squelch:        4,
-		Volume:         5,
-		PreDeEmphasis:  true,
-		HighPassFilter: true,
-		LowPassFilter:  false,
+func TestOffsetMHzSimplexIsZero(t *testing.T) {
+	got, err := offsetMHz("446.1000", "446.1000")
+	if err != nil {
+		t.Fatal(err)
 	}
-	got := s.answers()
-	want := "0\n446.1000\n446.1000\n0000\n0000\n4\n5\ny\ny\nn\ny\n"
-	if got != want {
-		t.Fatalf("answers() = %q, want %q", got, want)
+	if got != "0.0000" {
+		t.Errorf("offsetMHz(same freq) = %q, want \"0.0000\"", got)
 	}
 }
 
-func TestAnswersWideSendsOne(t *testing.T) {
-	s := Settings{Wide: true, TxFreqMHz: "446.1000", RxFreqMHz: "446.1000", TxCTCSS: "0000", RxCTCSS: "0000"}
-	got := s.answers()
-	if !strings.HasPrefix(got, "1\n") {
-		t.Fatalf("answers() = %q, want it to start with \"1\\n\" for Wide", got)
+func TestOffsetMHzPositiveShift(t *testing.T) {
+	got, err := offsetMHz("146.700", "146.100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "0.6000" {
+		t.Errorf("offsetMHz = %q, want \"0.6000\"", got)
 	}
 }
 
-// fakeTool writes a shell script standing in for 818-prog that just
-// dumps whatever it read from stdin plus a fixed tail, and always exits
-// 0 -- mirroring the real tool, which (confirmed live) exits 0 even when
-// the module itself rejects the command.
-func fakeTool(t *testing.T, tail string) string {
+func TestOffsetMHzNegativeShift(t *testing.T) {
+	got, err := offsetMHz("146.100", "146.700")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "-0.6000" {
+		t.Errorf("offsetMHz = %q, want \"-0.6000\"", got)
+	}
+}
+
+func TestCtcssArgBothEmpty(t *testing.T) {
+	if got := ctcssArg("", ""); got != "" {
+		t.Errorf("ctcssArg(\"\",\"\") = %q, want \"\" (omit the flag, matching sa818's own \"None\" default)", got)
+	}
+}
+
+func TestCtcssArgBothSet(t *testing.T) {
+	if got := ctcssArg("94.8", "127.3"); got != "94.8,127.3" {
+		t.Errorf("ctcssArg = %q, want \"94.8,127.3\"", got)
+	}
+}
+
+func TestCtcssArgOneSided(t *testing.T) {
+	if got := ctcssArg("94.8", ""); got != "94.8,None" {
+		t.Errorf("ctcssArg = %q, want \"94.8,None\"", got)
+	}
+	if got := ctcssArg("", "94.8"); got != "None,94.8" {
+		t.Errorf("ctcssArg = %q, want \"None,94.8\"", got)
+	}
+}
+
+// fakeSa818 writes a shell script standing in for ASL3's real sa818
+// tool: it records each invocation's argv (one line per call, appended
+// across calls so a test can inspect all three subcommand invocations)
+// and exits with exitCode, echoing tail to stdout.
+func fakeSa818(t *testing.T, tail string, exitCode int) (tool, argvLog string) {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "fake-818-prog")
-	script := "#!/bin/sh\ncat >/dev/null\necho '" + tail + "'\nexit 0\n"
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+	toolPath := filepath.Join(dir, "fake-sa818")
+	logPath := filepath.Join(dir, "argv.log")
+	script := "#!/bin/sh\necho \"$@\" >> " + logPath + "\necho '" + tail + "'\nexit " + strconv.Itoa(exitCode) + "\n"
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
 		t.Fatalf("write fake tool: %v", err)
 	}
-	return path
+	return toolPath, logPath
 }
 
-func TestProgramDetectsModuleErrorDespiteZeroExit(t *testing.T) {
-	tool := fakeTool(t, "Error, invalid information (+DMOSETGROUP:1). Check input format..")
-	s := Settings{TxFreqMHz: "446.1000", RxFreqMHz: "446.1000", TxCTCSS: "0000", RxCTCSS: "0000", Squelch: 4, Volume: 5}
-	output, ok, err := Program(context.Background(), tool, s)
-	if err != nil {
-		t.Fatalf("Program() error = %v, want nil (tool itself exits 0)", err)
+func TestProgramInvokesThreeSubcommandsWithExpectedFlags(t *testing.T) {
+	tool, argvLog := fakeSa818(t, "OK", 0)
+	s := Settings{
+		Wide:           false,
+		TxFreqMHz:      "146.700",
+		RxFreqMHz:      "146.100",
+		TxCTCSS:        "94.8",
+		RxCTCSS:        "94.8",
+		Squelch:        4,
+		Volume:         4,
+		PreDeEmphasis:  true,
+		HighPassFilter: false,
+		LowPassFilter:  true,
 	}
-	if ok {
-		t.Fatalf("Program() ok = true, want false when output contains \"Error\"")
-	}
-	if !strings.Contains(output, "DMOSETGROUP") {
-		t.Fatalf("Program() output = %q, want it to include the fake tool's message", output)
-	}
-}
-
-func TestProgramSuccess(t *testing.T) {
-	tool := fakeTool(t, "OK")
-	s := Settings{TxFreqMHz: "446.1000", RxFreqMHz: "446.1000", TxCTCSS: "0000", RxCTCSS: "0000", Squelch: 4, Volume: 5}
 	_, ok, err := Program(context.Background(), tool, s)
 	if err != nil {
 		t.Fatalf("Program() error = %v", err)
 	}
 	if !ok {
-		t.Fatalf("Program() ok = false, want true when output has no \"Error\"")
+		t.Fatal("Program() ok = false, want true")
+	}
+
+	data, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d invocations, want 3 (radio, volume, filters): %v", len(lines), lines)
+	}
+
+	radio := lines[0]
+	for _, want := range []string{"radio", "--frequency=146.100", "--offset=0.6000", "--bw=0", "--squelch=4", "--ctcss=94.8,94.8"} {
+		if !strings.Contains(radio, want) {
+			t.Errorf("radio invocation %q missing %q", radio, want)
+		}
+	}
+
+	volume := lines[1]
+	if !strings.Contains(volume, "volume") || !strings.Contains(volume, "--level=4") {
+		t.Errorf("volume invocation = %q, want it to contain \"volume\" and \"--level=4\"", volume)
+	}
+
+	filters := lines[2]
+	for _, want := range []string{"filters", "--emphasis=Enable", "--highpass=Disable", "--lowpass=Enable"} {
+		if !strings.Contains(filters, want) {
+			t.Errorf("filters invocation %q missing %q", filters, want)
+		}
+	}
+}
+
+func TestProgramNoToneOmitsCtcssFlag(t *testing.T) {
+	tool, argvLog := fakeSa818(t, "OK", 0)
+	s := Settings{TxFreqMHz: "446.1000", RxFreqMHz: "446.1000", Squelch: 4, Volume: 4}
+	if _, ok, err := Program(context.Background(), tool, s); err != nil || !ok {
+		t.Fatalf("Program() = ok=%v err=%v", ok, err)
+	}
+	data, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "--ctcss") {
+		t.Errorf("expected no --ctcss flag when neither side wants a tone, got: %s", data)
+	}
+}
+
+func TestProgramStopsAfterFirstFailure(t *testing.T) {
+	tool, argvLog := fakeSa818(t, "boom", 1)
+	s := Settings{TxFreqMHz: "446.1000", RxFreqMHz: "446.1000", Squelch: 4, Volume: 4}
+	_, ok, err := Program(context.Background(), tool, s)
+	if err == nil {
+		t.Fatal("Program() error = nil, want non-nil after the radio subcommand fails")
+	}
+	if ok {
+		t.Fatal("Program() ok = true, want false")
+	}
+	data, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d invocations, want exactly 1 (radio failed, volume/filters should be skipped): %v", len(lines), lines)
 	}
 }
 
 func TestProgramMissingTool(t *testing.T) {
-	_, ok, err := Program(context.Background(), filepath.Join(t.TempDir(), "does-not-exist"), Settings{})
+	_, ok, err := Program(context.Background(), filepath.Join(t.TempDir(), "does-not-exist"), Settings{TxFreqMHz: "446.1", RxFreqMHz: "446.1"})
 	if err == nil {
-		t.Fatalf("Program() error = nil, want an error for a missing binary")
+		t.Fatal("Program() error = nil, want an error for a missing binary")
 	}
 	if ok {
-		t.Fatalf("Program() ok = true, want false on error")
+		t.Fatal("Program() ok = true, want false on error")
+	}
+}
+
+func TestProgramInvalidFrequencyErrors(t *testing.T) {
+	_, ok, err := Program(context.Background(), "irrelevant", Settings{TxFreqMHz: "not-a-number", RxFreqMHz: "446.1"})
+	if err == nil {
+		t.Fatal("Program() error = nil, want an error for an unparseable frequency")
+	}
+	if ok {
+		t.Fatal("Program() ok = true, want false")
 	}
 }

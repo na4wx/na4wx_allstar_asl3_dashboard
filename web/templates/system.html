@@ -134,10 +134,11 @@
       </div>
       <div class="field">
         <div class="label-row">
-          <label for="sa818_squelch">Squelch (1-9)</label>
+          <label for="sa818_squelch">Squelch (0-8)</label>
           {{template "help" "Higher numbers require a stronger signal before the module opens. 4 is a typical starting point."}}
         </div>
         <select id="sa818_squelch" name="squelch">
+          <option value="0" {{if $last}}{{if eq $last.Squelch 0}}selected{{end}}{{end}}>0</option>
           <option value="1" {{if $last}}{{if eq $last.Squelch 1}}selected{{end}}{{end}}>1</option>
           <option value="2" {{if $last}}{{if eq $last.Squelch 2}}selected{{end}}{{end}}>2</option>
           <option value="3" {{if $last}}{{if eq $last.Squelch 3}}selected{{end}}{{end}}>3</option>
@@ -146,21 +147,19 @@
           <option value="6" {{if $last}}{{if eq $last.Squelch 6}}selected{{end}}{{end}}>6</option>
           <option value="7" {{if $last}}{{if eq $last.Squelch 7}}selected{{end}}{{end}}>7</option>
           <option value="8" {{if $last}}{{if eq $last.Squelch 8}}selected{{end}}{{end}}>8</option>
-          <option value="9" {{if $last}}{{if eq $last.Squelch 9}}selected{{end}}{{end}}>9</option>
         </select>
       </div>
       <div class="field">
         <div class="label-row">
-          <label for="sa818_volume">Volume (0-8)</label>
-          {{template "help" "The module's own audio output level. 5 is a typical starting point — fine-tune by ear."}}
+          <label for="sa818_volume">Volume (1-8)</label>
+          {{template "help" "The module's own audio output level. 4 is a typical starting point — fine-tune by ear."}}
         </div>
         <select id="sa818_volume" name="volume">
-          <option value="0" {{if $last}}{{if eq $last.Volume 0}}selected{{end}}{{end}}>0</option>
           <option value="1" {{if $last}}{{if eq $last.Volume 1}}selected{{end}}{{end}}>1</option>
           <option value="2" {{if $last}}{{if eq $last.Volume 2}}selected{{end}}{{end}}>2</option>
           <option value="3" {{if $last}}{{if eq $last.Volume 3}}selected{{end}}{{end}}>3</option>
-          <option value="4" {{if $last}}{{if eq $last.Volume 4}}selected{{end}}{{end}}>4</option>
-          <option value="5" {{if $last}}{{if eq $last.Volume 5}}selected{{end}}{{else}}selected{{end}}>5</option>
+          <option value="4" {{if $last}}{{if eq $last.Volume 4}}selected{{end}}{{else}}selected{{end}}>4</option>
+          <option value="5" {{if $last}}{{if eq $last.Volume 5}}selected{{end}}{{end}}>5</option>
           <option value="6" {{if $last}}{{if eq $last.Volume 6}}selected{{end}}{{end}}>6</option>
           <option value="7" {{if $last}}{{if eq $last.Volume 7}}selected{{end}}{{end}}>7</option>
           <option value="8" {{if $last}}{{if eq $last.Volume 8}}selected{{end}}{{end}}>8</option>
@@ -190,7 +189,7 @@
           {{template "help" "Programs the module's own hardware to encode this tone on transmit, so other stations/repeaters requiring a PL tone will open for you. Leave at \"No tone\" unless you know your repeater requires one."}}
         </div>
         <select id="sa818_tx_ctcss" name="tx_ctcss">
-          <option value="0000" {{if or (not $last) (eq $last.TxCTCSS "0000") (eq $last.TxCTCSS "")}}selected{{end}}>No tone (0000)</option>
+          <option value="" {{if or (not $last) (eq $last.TxCTCSS "")}}selected{{end}}>No tone</option>
           {{range $.CTCSSOptions}}<option value="{{.Code}}" {{if and $last (eq $last.TxCTCSS .Code)}}selected{{end}}>{{.Hz}} Hz</option>{{end}}
         </select>
       </div>
@@ -200,7 +199,7 @@
           {{template "help" "Programs the module itself to require this tone before it reports a valid signal — a real hardware squelch gate. Setting this is what stops the module's own squelch-tail noise burst from being mistaken for a valid signal and re-triggering the transmitter."}}
         </div>
         <select id="sa818_rx_ctcss" name="rx_ctcss">
-          <option value="0000" {{if or (not $last) (eq $last.RxCTCSS "0000") (eq $last.RxCTCSS "")}}selected{{end}}>No tone (0000)</option>
+          <option value="" {{if or (not $last) (eq $last.RxCTCSS "")}}selected{{end}}>No tone</option>
           {{range $.CTCSSOptions}}<option value="{{.Code}}" {{if and $last (eq $last.RxCTCSS .Code)}}selected{{end}}>{{.Hz}} Hz</option>{{end}}
         </select>
       </div>

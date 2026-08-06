@@ -4,7 +4,7 @@ import "testing"
 
 func TestCTCSSTonesLength(t *testing.T) {
 	if len(CTCSSTones) != 38 {
-		t.Fatalf("len(CTCSSTones) = %d, want 38 (the module's own documented range is 1-38)", len(CTCSSTones))
+		t.Fatalf("len(CTCSSTones) = %d, want 38 (matches the module's own real `sa818 radio --help` tone list)", len(CTCSSTones))
 	}
 }
 
@@ -18,60 +18,31 @@ func TestCTCSSTonesNoDuplicates(t *testing.T) {
 	}
 }
 
-// TestCTCSSCodeKnownPoints pins the three cross-checked data points that
-// grounded this table: the manual's own worked example uses code 0012
-// for what the standard ordering says is 100.0 Hz, and an independently
-// confirmed reference point (118.8 Hz -> code 17) landed exactly where
-// this table predicts.
-func TestCTCSSCodeKnownPoints(t *testing.T) {
-	cases := []struct{ hz, code string }{
-		{"67.0", "0001"},
-		{"100.0", "0012"}, // the manual's own AT+DMOSETGROUP example value
-		{"118.8", "0017"}, // independently confirmed reference point
-		{"250.3", "0038"}, // last tone in the module's own (non-generic) table
+// TestCTCSSTonesMatchesRealToolHelp pins the exact tone list printed by
+// `sa818 radio --help` on a real ASL3 node -- confirmed identical to
+// this table, first and last entries and the count together, rather than
+// assuming the generic ~38-tone list many other radios use (which stops
+// at 196.6 Hz, not 250.3).
+func TestCTCSSTonesMatchesRealToolHelp(t *testing.T) {
+	if CTCSSTones[0] != "67.0" {
+		t.Errorf("CTCSSTones[0] = %q, want \"67.0\"", CTCSSTones[0])
 	}
-	for _, c := range cases {
-		if got := CTCSSCode(c.hz); got != c.code {
-			t.Errorf("CTCSSCode(%q) = %q, want %q", c.hz, got, c.code)
+	if last := CTCSSTones[len(CTCSSTones)-1]; last != "250.3" {
+		t.Errorf("last tone = %q, want \"250.3\"", last)
+	}
+}
+
+func TestValidCTCSSHz(t *testing.T) {
+	valid := []string{"", "67.0", "100.0", "250.3"}
+	for _, hz := range valid {
+		if !ValidCTCSSHz(hz) {
+			t.Errorf("ValidCTCSSHz(%q) = false, want true", hz)
 		}
 	}
-}
-
-func TestCTCSSCodeUnknownTone(t *testing.T) {
-	// 196.6 Hz is the top of the *generic* CTCSS list many other radios
-	// use, but not one of this module's own 38 tones -- guarding the
-	// exact mistake an initial, unverified guess at this table made.
-	if got := CTCSSCode("196.6"); got != "" {
-		t.Errorf("CTCSSCode(196.6) = %q, want \"\" -- 196.6 Hz is not one of this module's tones", got)
-	}
-}
-
-func TestCTCSSHzRoundTrip(t *testing.T) {
-	for i, hz := range CTCSSTones {
-		code := CTCSSCode(hz)
-		if got := CTCSSHz(code); got != hz {
-			t.Errorf("index %d: CTCSSHz(CTCSSCode(%q)=%q) = %q, want %q", i, hz, code, got, hz)
-		}
-	}
-}
-
-func TestCTCSSHzNoTone(t *testing.T) {
-	if got := CTCSSHz("0000"); got != "" {
-		t.Errorf("CTCSSHz(0000) = %q, want \"\"", got)
-	}
-}
-
-func TestValidCTCSSCode(t *testing.T) {
-	valid := []string{"0000", "0001", "0012", "0038"}
-	for _, c := range valid {
-		if !ValidCTCSSCode(c) {
-			t.Errorf("ValidCTCSSCode(%q) = false, want true", c)
-		}
-	}
-	invalid := []string{"", "0039", "0", "12", "abcd", "-001", "00012"}
-	for _, c := range invalid {
-		if ValidCTCSSCode(c) {
-			t.Errorf("ValidCTCSSCode(%q) = true, want false", c)
+	invalid := []string{"196.6", "0000", "abc", "100"}
+	for _, hz := range invalid {
+		if ValidCTCSSHz(hz) {
+			t.Errorf("ValidCTCSSHz(%q) = true, want false", hz)
 		}
 	}
 }
