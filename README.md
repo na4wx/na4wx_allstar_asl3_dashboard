@@ -1,7 +1,7 @@
 # ASL3 Config GUI
 
 A browser-based configuration dashboard for AllStarLink 3 (ASL3) nodes —
-a port of [HamVoipConfigGui](https://github.com/na4wx/na4wx_allstar_dashboard),
+a port of [na4wx_allstar_dashboard](https://github.com/na4wx/na4wx_allstar_dashboard),
 which targets the older HamVoIP distribution instead.
 
 **Status: early scaffold.** Auth, template rendering, and the fully
