@@ -1,0 +1,39 @@
+{{define "title"}}Nodes{{end}}
+{{define "content"}}
+<h1>Nodes</h1>
+
+<div class="card">
+  <div class="actions" style="margin-top:0">
+    <a class="btn primary" href="/nodes/new">Add node</a>
+  </div>
+</div>
+
+{{if .Nodes}}
+<div class="card">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Number</th><th>Callsign</th><th>Radio device</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{range .Nodes}}
+        <tr>
+          <td class="nowrap">{{.Node.Number}}</td>
+          <td>{{if .Callsign}}{{.Callsign}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .Node.RXChannel}}{{.Node.RXChannel}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td class="nowrap">
+            <a class="btn" href="/nodes/{{.Node.Number}}">Edit</a>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="card">
+  <p class="hint">No nodes configured yet.</p>
+</div>
+{{end}}
+{{end}}
+{{template "layout" .}}

@@ -1,0 +1,771 @@
+/* Visual design tokens. Colors are deliberately soft rather than
+   high-contrast utility-panel defaults: this app is aimed at operators
+   who don't think of themselves as sysadmins, and a page that reads
+   like a terminal makes routine settings feel riskier than they are. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --border: #e3e8ef;
+  --border-strong: #cfd6e0;
+  --text: #10151c;
+  --text-dim: #626d7d;
+  --accent: #3b6df5;
+  --accent-soft: #eaf0ff;
+  --accent-text: #ffffff;
+  --danger: #d4483b;
+  --danger-soft: #fdeeec;
+  --ok: #17944c;
+  --ok-soft: #e7f6ed;
+
+  --radius-sm: 8px;
+  --radius: 11px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(16, 21, 28, 0.05);
+  --shadow: 0 1px 3px rgba(16, 21, 28, 0.06), 0 6px 16px -6px rgba(16, 21, 28, 0.10);
+  --shadow-lg: 0 12px 32px -8px rgba(16, 21, 28, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --surface: #171b21;
+    --surface-2: #1d222a;
+    --border: #272d37;
+    --border-strong: #39414e;
+    --text: #e9edf3;
+    --text-dim: #98a2b3;
+    --accent: #6f9bff;
+    --accent-soft: #1a2334;
+    --accent-text: #0b0f16;
+    --danger: #f0796b;
+    --danger-soft: #2a1a19;
+    --ok: #4ecb80;
+    --ok-soft: #14251c;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15.5px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04";
+}
+
+/* Sticky so the nav stays reachable on the home page, which is long
+   once a node has history tables. */
+header.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.5rem;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(1.6) blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+header.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  font-size: 1.02rem;
+  text-decoration: none;
+  color: var(--text);
+  /* Truncates on a narrow screen instead of wrapping across multiple
+     lines — flex-shrink:1 plus min-width:0 is what lets a flex child
+     shrink below its content's natural width at all, which is required
+     for overflow/ellipsis to ever kick in on a flex item. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+header.topbar .brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: block;
+  flex-shrink: 0;
+}
+
+header.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+header.topbar nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+header.topbar nav a:hover { color: var(--text); background: var(--surface-2); }
+
+header.topbar nav form { margin-left: 1.25rem; }
+
+/* Hamburger toggle: hidden on desktop, where nav already fits on one
+   row (see the max-width:620px block below for its mobile styling). */
+.nav-toggle {
+  display: none;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.nav-toggle span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text);
+}
+.nav-toggle:hover { background: var(--surface-2); }
+
+.restart-bar {
+  position: sticky;
+  top: 0;
+  z-index: 29;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 1.5rem;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+.restart-bar form { margin: 0; }
+.restart-bar button {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--danger);
+  font-weight: 620;
+  cursor: pointer;
+}
+.restart-bar button:hover { background: color-mix(in srgb, #fff 88%, var(--danger)); }
+
+main {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+h1 {
+  font-size: 1.7rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  margin: 0 0 1.35rem;
+}
+h2 {
+  font-size: 1.12rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.85rem;
+}
+
+.field { margin-bottom: 1.1rem; }
+.field label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 550;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.field .hint {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 0.4rem;
+}
+
+input[type=text], input[type=password], input[type=number], select, textarea {
+  width: 100%;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input::placeholder, textarea::placeholder { color: var(--text-dim); opacity: 0.75; }
+
+/* Soft focus ring rather than a hard outline — same accessibility
+   signal, less alarm-bell. */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+                    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 17px) center, calc(100% - 12px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.2rem;
+}
+
+.row { display: flex; gap: 1.15rem; flex-wrap: wrap; }
+.row .field { flex: 1; min-width: 190px; }
+
+button, .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              transform 0.08s ease, box-shadow 0.15s ease;
+}
+button:hover, .btn:hover { background: var(--surface-2); border-color: var(--text-dim); }
+button:active, .btn:active { transform: translateY(1px); }
+
+button.primary, .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+button.primary:hover, .btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  border-color: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
+button.danger, .btn.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+button.danger:hover, .btn.danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.actions { display: flex; gap: 0.65rem; margin-top: 1.25rem; flex-wrap: wrap; }
+
+table { width: 100%; border-collapse: collapse; }
+table th, table td {
+  text-align: left;
+  padding: 0.65rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
+
+/* History tables on the home page. Wrapped in .table-scroll so a wide
+   table (app_rpt's lstats has six columns plus a timestamp) scrolls
+   inside its own card instead of stretching the whole page sideways. */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.data-table { font-size: 0.89rem; }
+
+/* Sentence case rather than the uppercase micro-type these headers used
+   to have — that reads as machine output, which is the opposite of what
+   this page is for. */
+.data-table th {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+.data-table td { vertical-align: middle; }
+.data-table tbody tr { transition: background 0.12s ease; }
+.data-table tbody tr:hover { background: var(--surface); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+.nowrap { white-space: nowrap; }
+.muted { color: var(--text-dim); font-size: 0.88em; }
+
+/* A connected node number. Tabular figures keep columns of numbers
+   aligned without needing a monospace face, which would push this back
+   toward looking like console output. */
+.tag {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  margin: 0.12rem 0.2rem 0.12rem 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A small dot next to the "Right now" title that lights while the SSE
+   stream is connected, so the "live, no reload" claim is visible. Grey
+   until the first event arrives (or while the stream is down). */
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.live-dot.on {
+  background: var(--ok);
+  opacity: 1;
+  animation: live-breathe 2s ease-in-out infinite;
+}
+@keyframes live-breathe {
+  50% { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot.on { animation: none; }
+}
+
+/* Inline result of a background link/unlink, shown without reloading. */
+.link-result {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+}
+.link-result.ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
+  border-left-color: var(--ok);
+  color: color-mix(in srgb, var(--ok) 80%, var(--text));
+}
+.link-result.error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  border-left-color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text));
+}
+
+/* Live-status card heading: title on the left, on-air pill on the
+   right, wrapping instead of colliding on a narrow screen. */
+.live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+/* rpt stats renders as label/value rows rather than columns, so the
+   row headers are left-aligned and sized like body text, not like the
+   column headings of the history tables. */
+.stats-table th[scope="row"] {
+  position: static;
+  background: transparent;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: normal;
+  font-size: 0.86rem;
+  width: 55%;
+}
+.stats-table td {
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.raw-block {
+  font-size: 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* A node number paired with its callsign from AllStarLink's directory.
+   The callsign is what an operator actually recognizes, so it sits
+   directly alongside the number rather than in a separate column. */
+.node-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-right: 0.4rem;
+}
+.node-call {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+/* A connected node that is transmitting right now (RPT_ALINKS keyed).
+   The badge carries the meaning; the pulse just draws the eye to a
+   state that is, by definition, momentary. */
+.talking-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  animation: talking-pulse 1.2s ease-in-out infinite;
+}
+@keyframes talking-pulse {
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .talking-badge { animation: none; }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 550;
+  padding: 0.32rem 0.8rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.status-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.status-pill.up {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+  color: var(--ok);
+}
+.status-pill.up .dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent);
+}
+.status-pill.down {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+}
+.status-pill.down .dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+/* Flash messages carry a colored leading edge so the outcome reads at a
+   glance without relying on text color alone. */
+.flash {
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+}
+.flash.error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  border-left-color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text));
+}
+.flash.ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
+  border-left-color: var(--ok);
+  color: color-mix(in srgb, var(--ok) 80%, var(--text));
+}
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; }
+.stat-grid .stat {
+  padding: 0.95rem 1.05rem;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.stat-grid .stat .label {
+  font-size: 0.79rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.stat-grid .stat .value {
+  font-size: 1.3rem;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  margin-top: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.login-wrap { max-width: 380px; margin: 5rem auto; }
+
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+.label-row label { margin-bottom: 0; }
+
+.help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.help:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.help::before { content: "?"; }
+.help .help-tip {
+  display: none;
+  position: absolute;
+  bottom: 145%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.85rem;
+  width: 260px;
+  max-width: 60vw;
+  font-size: 0.81rem;
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.55;
+  text-align: left;
+  box-shadow: var(--shadow-lg);
+  z-index: 40;
+}
+.help:hover .help-tip, .help:focus .help-tip, .help:focus-within .help-tip { display: block; }
+.help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.section-intro {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin: -0.4rem 0 1.15rem;
+  line-height: 1.6;
+}
+
+/* Groups a long page of otherwise-flat cards (e.g. System) into
+   labeled sections, so it reads as a handful of related settings
+   rather than one undifferentiated stack. Dimmer and smaller than a
+   card's own h2 -- this labels a *group* of cards, not a setting. */
+.section-heading {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-dim);
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.85rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.section-heading:first-child { margin-top: 0; }
+
+.app-footer {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2.5rem;
+  font-size: 0.79rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.app-footer a { color: var(--text-dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+@media (max-width: 620px) {
+  main { padding: 1.25rem 1rem 3rem; }
+  .card { padding: 1.15rem; border-radius: var(--radius); }
+  h1 { font-size: 1.45rem; }
+  header.topbar { padding: 0.75rem 1rem; }
+
+  /* Below this width the nav (5 links + a logout button) no longer
+     fits on one row alongside the brand text — collapse it behind the
+     hamburger toggle instead of letting it overflow the viewport
+     (confirmed: at 375px it overflowed by over 100px, pushing "Log
+     out" completely off-screen with no way to reach it). */
+  .nav-toggle { display: flex; }
+  header.topbar nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+  header.topbar nav.open { display: flex; }
+  header.topbar nav a {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.95rem;
+    border-radius: var(--radius-sm);
+  }
+  header.topbar nav form { margin: 0.25rem 0 0; }
+  header.topbar nav form button { width: 100%; }
+
+  /* A handful of buttons on this site carry a full sentence of label
+     text (e.g. "Add placeholder device & try to bring Asterisk up") --
+     fine on desktop, but the base button rule's white-space:nowrap
+     pushed them wider than a phone screen, overflowing the card and the
+     page itself instead of wrapping. Desktop keeps nowrap (unaffected
+     by this media query) since every button there already fits on one
+     line comfortably. */
+  button, .btn {
+    white-space: normal;
+    text-align: center;
+  }
+
+  .section-heading { margin-top: 2rem; }
+}
+
+/* Confirmation modal, replacing native confirm() so a prompt before a
+   destructive/consequential action matches the rest of the app instead
+   of browser chrome that varies by OS/browser and can't be styled or
+   trusted to render the same way twice. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  z-index: 200;
+}
+/* An author rule setting `display` on this element would otherwise beat
+   the browser's own `[hidden] { display: none }` rule at equal
+   specificity, silently leaving a "hidden" modal fully visible and
+   blocking the page. This selector combines the class and the
+   attribute, giving it strictly higher specificity so hidden always
+   wins regardless of source order. */
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 440px;
+  width: 100%;
+  padding: 1.5rem;
+}
+.modal-card p {
+  margin: 0 0 1.5rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-line;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+/* Node page tabs. Deliberately no rule here sets `display` on
+   [data-tab-panel] itself — the modal above already hit the bug this
+   avoids: an author rule setting `display` on an element beats the
+   browser's own `[hidden] { display: none }` at equal specificity, so a
+   panel hidden via the `hidden` attribute would silently stay visible.
+   Leaving these panels' display entirely to the browser default keeps
+   `hidden` in full control. */
+.tabs {
+  display: flex;
+  gap: 0.15rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tabs button {
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 0.65rem 1rem;
+  font: inherit;
+  font-weight: 550;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.tabs button:hover { color: var(--text); background: var(--surface-2); }
+.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }

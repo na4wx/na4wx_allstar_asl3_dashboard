@@ -1,0 +1,54 @@
+{{define "help"}}<span class="help" tabindex="0"><span class="help-tip">{{.}}</span></span>{{end}}
+
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NA4WX Allstar Dashboard</title>
+  <link rel="icon" type="image/png" href="/static/img/icon.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  {{if .LoggedIn}}
+  <header class="topbar">
+    <a href="/" class="brand">
+      <img src="/static/img/icon.png" alt="" class="brand-mark">
+      NA4WX Allstar Dashboard
+    </a>
+    <button type="button" class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav data-nav>
+      <a href="/">Home</a>
+      <a href="/nodes">Nodes</a>
+      <a href="/stats">Status</a>
+      <a href="/system">System</a>
+      <a href="/config">Raw Config</a>
+      <form action="/logout" method="post">
+        <button type="submit">Log out</button>
+      </form>
+    </nav>
+  </header>
+  {{if restartNeeded}}
+  <div class="restart-bar">
+    <span>Asterisk must be restarted for changes to be applied.</span>
+    <form method="post" action="/system/apply-restart">
+      <button type="submit">Apply Changes</button>
+    </form>
+  </div>
+  {{end}}
+  {{end}}
+  <main>
+    {{if .Flash}}<div class="flash {{.FlashKind}}">{{.Flash}}</div>{{end}}
+    {{block "content" .}}{{end}}
+  </main>
+  <footer class="app-footer">
+    <p>Copyright &copy; 2026 Jordan Webb, NA4WX.</p> 
+    <p>Licensed under the <a href="https://www.gnu.org/licenses/gpl-3.0.html">GNU GPL v3</a>. Provided with no warranty; use at your own risk.</p>
+  </footer>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+{{end}}

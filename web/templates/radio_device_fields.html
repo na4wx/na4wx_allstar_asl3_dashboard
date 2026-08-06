@@ -1,0 +1,212 @@
+{{/* Shared radio device field cards, included by both node_form.html
+     (inline "create a new device" sub-form) and the System page's
+     device editor, so the two never drift out of sync. Takes a
+     *config.RadioDevice as its data. Callers must separately define
+     "ctcss_tones" and "tx_audio_sources" datalists (by those exact
+     ids) somewhere in the page, and handle the device's name/file
+     fields themselves — naming semantics differ too much between the
+     two callers (readonly-once-created vs always-fresh) to share. */}}
+{{define "radio_device_fields"}}
+<div class="card">
+  <h2>Signal detection</h2>
+  <p class="section-intro">Controls how the interface knows a signal is present and correctly toned, which is what opens the squelch.</p>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="carrierfrom">Detect an incoming signal using</label>
+        {{template "help" "How the interface knows someone is transmitting. If you're not sure, \"USB hardware signal\" is the standard choice for most USB radio interface boards."}}
+      </div>
+      <select id="carrierfrom" name="carrierfrom">
+        <option value="" {{if eq .CarrierFrom ""}}selected{{end}}>(not set)</option>
+        <option value="usb" {{if eq .CarrierFrom "usb"}}selected{{end}}>USB hardware signal (most common)</option>
+        <option value="usbinvert" {{if eq .CarrierFrom "usbinvert"}}selected{{end}}>USB hardware signal, inverted</option>
+        <option value="dsp" {{if eq .CarrierFrom "dsp"}}selected{{end}}>Automatic, from audio (DSP)</option>
+        <option value="vox" {{if eq .CarrierFrom "vox"}}selected{{end}}>Voice-activated (VOX)</option>
+        <option value="no" {{if eq .CarrierFrom "no"}}selected{{end}}>Disabled</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="ctcssfrom">Detect a sub-tone (CTCSS) using</label>
+        {{template "help" "If you use CTCSS/PL tones, this is how the interface confirms the correct tone before opening. Leave disabled if you don't use CTCSS."}}
+      </div>
+      <select id="ctcssfrom" name="ctcssfrom">
+        <option value="" {{if eq .CTCSSFrom ""}}selected{{end}}>(not set)</option>
+        <option value="no" {{if eq .CTCSSFrom "no"}}selected{{end}}>Disabled (no CTCSS)</option>
+        <option value="usb" {{if eq .CTCSSFrom "usb"}}selected{{end}}>USB hardware signal</option>
+        <option value="usbinvert" {{if eq .CTCSSFrom "usbinvert"}}selected{{end}}>USB hardware signal, inverted</option>
+        <option value="dsp" {{if eq .CTCSSFrom "dsp"}}selected{{end}}>Automatic, from audio (DSP)</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="rxdemod">Receive audio type</label>
+        {{template "help" "\"Normal\" matches what you'd hear from the radio's own speaker — right for almost everyone. \"Flat\" is only for advanced setups tapping audio before the radio's own filtering."}}
+      </div>
+      <select id="rxdemod" name="rxdemod">
+        <option value="" {{if eq .RXDemod ""}}selected{{end}}>(not set)</option>
+        <option value="speaker" {{if eq .RXDemod "speaker"}}selected{{end}}>Normal (speaker audio)</option>
+        <option value="flat" {{if eq .RXDemod "flat"}}selected{{end}}>Flat (advanced)</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="rxboost">Extra receive gain</label>
+        {{template "help" "Adds additional receive amplification for weak audio. Only turn this on if received audio still sounds too quiet at maximum receive volume below."}}
+      </div>
+      <select id="rxboost" name="rxboost">
+        <option value="" {{if eq .RXBoost ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .RXBoost "0"}}selected{{end}}>Off (normal)</option>
+        <option value="1" {{if eq .RXBoost "1"}}selected{{end}}>On (boost)</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="preemphasis">Pre-emphasis</label>
+        {{template "help" "A transmit audio shaping option some radio interfaces need. Leave at the default unless your hardware's documentation says to enable it."}}
+      </div>
+      <select id="preemphasis" name="preemphasis">
+        <option value="" {{if eq .PreEmphasis ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .PreEmphasis "0"}}selected{{end}}>Disabled</option>
+        <option value="1" {{if eq .PreEmphasis "1"}}selected{{end}}>Enabled</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="deemphasis">De-emphasis</label>
+        {{template "help" "The matching receive-side counterpart to pre-emphasis. Leave at the default unless your hardware's documentation says to enable it."}}
+      </div>
+      <select id="deemphasis" name="deemphasis">
+        <option value="" {{if eq .DeEmphasis ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .DeEmphasis "0"}}selected{{end}}>Disabled</option>
+        <option value="1" {{if eq .DeEmphasis "1"}}selected{{end}}>Enabled</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="plfilter">CTCSS tone filter</label>
+        {{template "help" "Filters the sub-audible CTCSS tone out of the audio that gets repeated, so listeners don't hear a faint tone underneath. Most setups leave this enabled."}}
+      </div>
+      <select id="plfilter" name="plfilter">
+        <option value="" {{if eq .PLFilter ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .PLFilter "0"}}selected{{end}}>Disabled</option>
+        <option value="1" {{if eq .PLFilter "1"}}selected{{end}}>Enabled</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Transmit</h2>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="txprelim">Pre-process transmit audio</label>
+        {{template "help" "Adjusts transmit audio for proper deviation before it reaches the radio. Leave as \"yes\" unless you have a specific reason to disable it."}}
+      </div>
+      <select id="txprelim" name="txprelim">
+        <option value="" {{if eq .TXPrelim ""}}selected{{end}}>(not set)</option>
+        <option value="yes" {{if eq .TXPrelim "yes"}}selected{{end}}>Yes (recommended)</option>
+        <option value="no" {{if eq .TXPrelim "no"}}selected{{end}}>No</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="txmixa">Transmit audio source</label>
+        {{template "help" "Which audio feeds the transmitter. \"voice\" is the standard setting for normal repeater/simplex audio."}}
+      </div>
+      <input type="text" id="txmixa" name="txmixa" value="{{.TXMixA}}" list="tx_audio_sources" placeholder="voice">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="txmixb">Secondary transmit source (advanced)</label>
+        {{template "help" "Only used in specialized setups mixing a second audio source into transmit. Leave blank for a normal setup."}}
+      </div>
+      <input type="text" id="txmixb" name="txmixb" value="{{.TXMixB}}" list="tx_audio_sources" placeholder="no">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="invertptt">Push-to-talk signal</label>
+        {{template "help" "If your radio never keys up, or keys up constantly and won't stop, switch this — it flips the electrical signal your interface board uses to trigger transmit."}}
+      </div>
+      <select id="invertptt" name="invertptt">
+        <option value="" {{if eq .InvertPTT ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .InvertPTT "0"}}selected{{end}}>Normal (try this first)</option>
+        <option value="1" {{if eq .InvertPTT "1"}}selected{{end}}>Inverted</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="txctcssdefault">Transmit sub-tone (Hz)</label>
+        {{template "help" "The CTCSS/PL tone this node transmits, so other stations' squelch opens for it. Click the field for a list of standard tones. Leave blank if you don't use a transmit tone."}}
+      </div>
+      <input type="text" id="txctcssdefault" name="txctcssdefault" value="{{.TXCTCSSDefault}}" list="ctcss_tones" placeholder="100.0">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Audio levels</h2>
+  <p class="section-intro">Start around 500 for both and adjust by ear — too low sounds weak or unreadable, too high sounds distorted or overdriven. If this device has already been tuned once with simpleusb-tune-menu/radio-tune-menu, saving here also updates its own tuning file so these values stay authoritative. Either way, changes only take effect after Asterisk restarts, not immediately on save: save your change, then use "Restart radio software" on the System page (a few seconds, doesn't reboot the whole device) to actually hear it, and repeat as needed.</p>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="rxmixerset">Receive volume (0-999)</label>
+        {{template "help" "How loud incoming radio audio is, going into the software. Higher numbers = louder."}}
+      </div>
+      <input type="number" id="rxmixerset" name="rxmixerset" min="0" max="999" value="{{.RXMixerSet}}" placeholder="500">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="txmixerset">Transmit volume (0-999)</label>
+        {{template "help" "How loud the software's audio is, going out to your radio's transmitter. Higher numbers = louder."}}
+      </div>
+      <input type="number" id="txmixerset" name="txmixerset" min="0" max="999" value="{{.TXMixerSet}}" placeholder="500">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="eeprom">USB device EEPROM</label>
+        {{template "help" "A separate app_rpt setting for the USB sound-fob interface's own onboard memory. Real-world testing on HamVoIP found this is NOT what determines whether the volumes above take effect -- that's handled automatically now (see this card's own note above). Leave at the default unless you have a specific reason to change it."}}
+      </div>
+      <select id="eeprom" name="eeprom">
+        <option value="" {{if eq .EEPROM ""}}selected{{end}}>(not set -- driver default is On)</option>
+        <option value="0" {{if eq .EEPROM "0"}}selected{{end}}>Off (recommended -- volumes above take effect)</option>
+        <option value="1" {{if eq .EEPROM "1"}}selected{{end}}>On (device's own stored levels override the above)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Advanced hardware settings (usbradio.conf only)</h2>
+  <p class="section-intro">Specific to the USBRADIO driver. Leave at the defaults unless your interface board's documentation says otherwise, or you're not using that driver.</p>
+  <div class="row">
+    <div class="field">
+      <div class="label-row">
+        <label for="hdwtype">Interface board model</label>
+        {{template "help" "Identifies your specific USB sound fob hardware. Leave as 0 unless your board's documentation specifies a different number."}}
+      </div>
+      <input type="text" id="hdwtype" name="hdwtype" value="{{.HdwType}}" placeholder="0">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="duplex3">Extra transmit delay (advanced)</label>
+        {{template "help" "A hardware timing option for certain interface boards. Leave at the default unless instructed to change it."}}
+      </div>
+      <select id="duplex3" name="duplex3">
+        <option value="" {{if eq .Duplex3 ""}}selected{{end}}>(not set)</option>
+        <option value="0" {{if eq .Duplex3 "0"}}selected{{end}}>Off (normal)</option>
+        <option value="1" {{if eq .Duplex3 "1"}}selected{{end}}>On</option>
+      </select>
+    </div>
+  </div>
+</div>
+{{end}}

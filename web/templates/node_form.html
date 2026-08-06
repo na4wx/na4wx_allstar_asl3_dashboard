@@ -1,0 +1,1186 @@
+{{define "title"}}Node {{.Node.Number}}{{end}}
+{{define "content"}}
+<h1>Node {{.Node.Number}}</h1>
+
+<datalist id="radio_channel_options">
+  {{range .RadioDevices}}<option value="{{.Channel}}">{{.Label}}</option>{{end}}
+</datalist>
+<datalist id="detected_sound_cards">
+  {{range .DetectedCards}}<option value="{{.ID}}">{{.Description}}</option>{{end}}
+</datalist>
+<datalist id="ctcss_tones">
+  {{range .CTCSSTones}}<option value="{{.}}">{{.}} Hz</option>{{end}}
+</datalist>
+<datalist id="tx_audio_sources">
+  <option value="voice">voice — normal repeater/simplex audio</option>
+  <option value="no">no — none</option>
+  <option value="tone">tone — tone only</option>
+  <option value="composite">composite — advanced</option>
+</datalist>
+<datalist id="function_reference">
+  <option value="ilink,1">ilink,1 — disconnect the last-connected node</option>
+  <option value="ilink,2">ilink,2 — connect, listen-only</option>
+  <option value="ilink,3">ilink,3 — connect, both directions, stays connected</option>
+  <option value="ilink,5">ilink,5 — announce connected nodes</option>
+  <option value="ilink,6">ilink,6 — disconnect everything</option>
+  <option value="ilink,8">ilink,8 — connect, listen-only, temporary</option>
+  <option value="status,1">status,1 — announce this node's status</option>
+  <option value="autopatchup">autopatchup — start an autopatch call</option>
+  <option value="autopatchdn">autopatchdn — end the autopatch call</option>
+</datalist>
+<datalist id="sound_files">
+  {{range .SoundFiles}}<option value="{{.Ref}}">{{.Ref}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+</datalist>
+<datalist id="ct_keys">
+  {{range .CTKeys}}<option value="{{.}}">{{.}}</option>{{end}}
+</datalist>
+<datalist id="county_codes">
+  {{range .CountyCodeOptions}}<option value="{{.Code}}">{{.Label}}</option>{{end}}
+</datalist>
+
+<div class="tabs" data-node-number="{{.Node.Number}}">
+  <button type="button" data-tab-target="setup">Setup</button>
+  <button type="button" data-tab-target="tones">Tones &amp; Audio</button>
+  <button type="button" data-tab-target="network">Allstar Network</button>
+  <button type="button" data-tab-target="live">Live &amp; Commands</button>
+  <button type="button" data-tab-target="automation">Scheduler</button>
+  <button type="button" data-tab-target="skywarnplus">SkywarnPlus</button>
+</div>
+
+<div data-tab-panel="setup">
+<form method="post" action="/nodes/{{.Node.Number}}">
+  <div class="card">
+    <h2>Node identity</h2>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="number">Node number</label>
+          {{template "help" "The unique number assigned to your node when you registered at allstarlink.org, e.g. 546051."}}
+        </div>
+        <input type="text" id="number" name="number" value="{{.Node.Number}}" readonly required pattern="[0-9]+">
+        <div class="hint">Node numbers can't be changed here — delete and recreate the node instead.</div>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="dial_string">Local connection address (rarely needed)</label>
+        {{template "help" "For local-LAN-only or private (off of AllStarLink) node setups only. A normal AllStarLink-registered node leaves this blank entirely — it's not the same as, and won't affect, the internet registration below."}}
+      </div>
+      <input type="text" id="dial_string" name="dial_string" value="{{.Node.DialString}}" placeholder="Leave blank unless you know you need this">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Radio hardware</h2>
+    <p class="section-intro">Which physical radio interface this node uses.</p>
+    <div class="row">
+      <div class="field" style="flex:none">
+        <label><input type="radio" name="radio_mode" value="existing" data-radio-mode {{if ne .RadioMode "new"}}checked{{end}}> Use an already-configured device</label>
+      </div>
+      <div class="field" style="flex:none">
+        <label><input type="radio" name="radio_mode" value="new" data-radio-mode {{if eq .RadioMode "new"}}checked{{end}}> Create a new device</label>
+      </div>
+    </div>
+
+    <div data-radio-mode-section="existing">
+      <div class="row">
+        <div class="field">
+          <div class="label-row">
+            <label for="rxchannel">Radio device</label>
+            {{template "help" "The interface that receives audio from your radio. Click the field to see devices you've already set up."}}
+          </div>
+          <input type="text" id="rxchannel" name="rxchannel" value="{{.Node.RXChannel}}" list="radio_channel_options" placeholder="Click to choose, or type USBRADIO/usb">
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="txchannel">Transmit device (rarely needed)</label>
+            {{template "help" "Only set this if your transmit audio comes from a different device than receive. The vast majority of setups use one device for both — leave this blank."}}
+          </div>
+          <input type="text" id="txchannel" name="txchannel" value="{{.Node.TXChannel}}" list="radio_channel_options" placeholder="Leave blank unless you know you need this">
+        </div>
+      </div>
+      <p class="hint">To adjust an existing device's own settings (audio levels, signal detection, etc.), manage it from the <a href="/system">System page</a>.</p>
+    </div>
+
+    <div data-radio-mode-section="new" style="display:none">
+      <div class="row">
+        <div class="field">
+          <div class="label-row">
+            <label for="device_name">New device name</label>
+            {{template "help" "A label you choose for this device, e.g. usb. It does not need to match your hardware's own ALSA name — confirmed on a real node those can differ with no ill effect."}}
+          </div>
+          <input type="text" id="device_name" name="name" value="{{.Device.Name}}" list="detected_sound_cards" placeholder="e.g. usb — or click for what's plugged in">
+          {{if .DetectedCards}}
+          <div class="hint">Plugged in right now (for reference — the name above doesn't need to match this): {{range $i, $c := .DetectedCards}}{{if $i}}, {{end}}{{.ID}}{{if .Description}} ({{.Description}}){{end}}{{end}}</div>
+          {{else}}
+          <div class="hint">No USB sound devices detected. If you're testing this away from the actual node, that's expected — type the name manually.</div>
+          {{end}}
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="device_file">Driver</label>
+            {{template "help" "Which HamVoIP audio driver this device uses. SimpleUSB is the common choice for USB sound-fob interfaces like SHARI; USBRADIO has a couple of extra hardware-specific options. If you're not sure, SimpleUSB is the safer default."}}
+          </div>
+          <select id="device_file" name="device_file">
+            <option value="simpleusb.conf">SimpleUSB (simpleusb.conf)</option>
+            <option value="usbradio.conf">USBRADIO (usbradio.conf)</option>
+          </select>
+        </div>
+      </div>
+      {{template "radio_device_fields" .Device}}
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="duplex">Repeater mode</label>
+          {{template "help" "Controls whether this acts as a full repeater (receive and transmit at the same time, with status beeps) or a simpler simplex setup. If you're not sure, \"full repeater\" is the normal choice."}}
+        </div>
+        <select id="duplex" name="duplex">
+          <option value="" {{if eq .Node.Duplex ""}}selected{{end}}>(not set)</option>
+          <option value="0" {{if eq .Node.Duplex "0"}}selected{{end}}>Simplex — one frequency, no status tones</option>
+          <option value="1" {{if eq .Node.Duplex "1"}}selected{{end}}>Simplex — one frequency, with status tones</option>
+          <option value="2" {{if eq .Node.Duplex "2"}}selected{{end}}>Full repeater — normal setup, with status tones</option>
+          <option value="3" {{if eq .Node.Duplex "3"}}selected{{end}}>Full repeater — with status tones, but doesn't repeat audio</option>
+          <option value="4" {{if eq .Node.Duplex "4"}}selected{{end}}>Full repeater — normal setup, but no repeat during autopatch calls</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Timing</h2>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="hangtime">Squelch tail (ms)</label>
+          {{template "help" "How long the repeater keeps transmitting after you release the mic, in thousandths of a second. 5000 = 5 seconds. Shorter feels snappier; longer avoids choppy back-and-forth conversations."}}
+        </div>
+        <input type="number" id="hangtime" name="hangtime" value="{{.Node.HangTime}}" placeholder="5000">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="althangtime">Alternate squelch tail (ms)</label>
+          {{template "help" "A second squelch tail duration used in some linked-node scenarios. Most setups can leave this blank."}}
+        </div>
+        <input type="number" id="althangtime" name="althangtime" value="{{.Node.AltHangTime}}">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="totime">Transmit safety cutoff (ms)</label>
+          {{template "help" "Stops transmitting automatically after this long, in case a radio gets stuck keyed up. 180000 = 3 minutes. This is a safety limit, not something you want people to hit in normal use."}}
+        </div>
+        <input type="number" id="totime" name="totime" value="{{.Node.TOTime}}" placeholder="180000">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="idtime_minutes">ID announcement interval (minutes)</label>
+          {{template "help" "How often the repeater announces your callsign, as required by FCC rules. Default is 5 minutes. Must not exceed 10 minutes."}}
+        </div>
+        <input type="number" step="any" id="idtime_minutes" name="idtime_minutes" value="{{.IDTimeMinutes}}" placeholder="5">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Command/tone set</h2>
+      {{template "help" "A node needs its own working set of touch-tone commands, courtesy tones, and Morse ID sounds to do anything — without one, DTMF commands like connecting to another node silently do nothing. This is the single most common reason a newly added node doesn't work."}}
+    </div>
+    <div class="field">
+      <label for="clone_from">Replace this node's command/tone set</label>
+      <div class="row" style="align-items:flex-end; margin-top:0.4rem">
+        <div class="field">
+          <select id="clone_from" name="from">
+            <option value="__standard__">Standard AllStarLink command set</option>
+            {{range .OtherNodes}}<option value="{{.}}">Copy from node {{.}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field" style="flex:none">
+          <button type="submit" formaction="/nodes/{{.Node.Number}}/clone-config" formnovalidate class="btn" data-confirm="Replace node {{.Node.Number}}'s command/tone set? This overwrites its current status tones, Morse ID, touch-tone commands, and macros." data-confirm-danger>Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label-row">
+        <label>Repair section names</label>
+        {{template "help" "Use this if this node was set up by editing HamVoIP's shipped template — its sections may still be named for the template's example node (e.g. functions1998) instead of this one, which means editing or deleting this node here can miss them. Repair copies each set into a section named for this node and points the node at it. It keeps your current commands and tones; it only fixes the names. Safe to run any time — it does nothing if the names are already correct."}}
+      </div>
+      <div class="hint">Fixes a node whose command/tone sections are named for a different node (common if it was set up by hand from the template). Keeps your current settings — only corrects the names.</div>
+      <button type="submit" formaction="/nodes/{{.Node.Number}}/normalize" formnovalidate class="btn" style="margin-top:0.5rem" data-confirm="Repair node {{.Node.Number}}'s command/tone section names? This copies its current commands and tones into sections named for this node. Your settings are kept; only the section names change.">Repair section names</button>
+    </div>
+
+    <details style="margin-top:1rem">
+      <summary style="cursor:pointer; color:var(--text-dim); font-size:0.9rem;">Advanced: set section names manually</summary>
+      <div class="row" style="margin-top:0.75rem">
+        <div class="field">
+          <div class="label-row">
+            <label for="telemetry">Status tone set</label>
+            {{template "help" "Which set of beeps/tones the repeater plays for things like connecting or disconnecting. Leave blank unless you're pointing this at a specific existing section by name."}}
+          </div>
+          <input type="text" id="telemetry" name="telemetry" value="{{.Node.Telemetry}}" placeholder="telemetry">
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="morse">Morse code set</label>
+            {{template "help" "Which Morse code sound set to use for CW identification. Leave blank unless customized."}}
+          </div>
+          <input type="text" id="morse" name="morse" value="{{.Node.Morse}}" placeholder="morse">
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="functions">Touch-tone command set</label>
+            {{template "help" "Which set of touch-tone (DTMF) commands this node listens for. Manage the actual commands further down this page."}}
+          </div>
+          <input type="text" id="functions" name="functions" value="{{.Node.Functions}}" placeholder="functions">
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="macro">Saved macro set</label>
+            {{template "help" "Which set of saved multi-step command sequences this node uses. Manage the actual macros further down this page."}}
+          </div>
+          <input type="text" id="macro" name="macro" value="{{.Node.Macro}}" placeholder="macro">
+        </div>
+      </div>
+    </details>
+
+    <div class="field" style="margin-top:1rem">
+      <div class="label-row">
+        <label for="idrecording">Station ID announcement</label>
+        {{template "help" "The voice or Morse recording that identifies your station by callsign — required periodically by FCC rules. Typically |i followed by your callsign for a built-in voice, or pick/upload a custom recording in Tones & Audio below."}}
+      </div>
+      <input type="text" id="idrecording" name="idrecording" value="{{.Node.IDRecording}}" list="sound_files" placeholder="|iyourcallsign or a sound file name">
+      {{if and .SkywarnInstalled .SkywarnStatus.IDSwapEnabled}}
+      <p class="hint">SkywarnPlus's own ID swap is enabled — the file this points at may change automatically during an alert. See the SkywarnPlus tab.</p>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a class="btn" href="/">Cancel</a>
+    <span style="flex:1"></span>
+    <button type="submit" form="delete_node_form" class="danger" data-confirm="Delete node {{.Node.Number}}? This removes it from every config file it appears in, including its radio device (unless another node still uses it). This cannot be undone." data-confirm-danger>Delete node</button>
+  </div>
+</form>
+<form id="delete_node_form" method="post" action="/nodes/{{.Node.Number}}/delete"></form>
+</div>
+
+<div data-tab-panel="tones">
+<form method="post" action="/nodes/{{.Node.Number}}/courtesy-tones">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">When each courtesy tone plays</h2>
+      {{template "help" "The ct1-ct8 entries below define several courtesy tones, but a tone name like \"ct2\" has no fixed meaning on its own — these three settings are what actually decide which tone plays in which situation. Leave a field blank to use app_rpt's default for that situation."}}
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="unlinkedct">When not connected to any node</label>
+          {{template "help" "Which courtesy tone plays while this node is idle, not connected to any other node."}}
+        </div>
+        <input type="text" id="unlinkedct" name="unlinkedct" value="{{.Node.UnlinkedCT}}" list="ct_keys" placeholder="e.g. ct2">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="remotect">When a remote base is connected</label>
+          {{template "help" "Which courtesy tone plays when a remote base radio is connected locally. Only relevant if this node controls a remote base."}}
+        </div>
+        <input type="text" id="remotect" name="remotect" value="{{.Node.RemoteCT}}" list="ct_keys" placeholder="e.g. ct3">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="linkunkeyct">When a connected node unkeys</label>
+          {{template "help" "Which courtesy tone plays when a station on a connected/linked node releases its transmitter."}}
+        </div>
+        <input type="text" id="linkunkeyct" name="linkunkeyct" value="{{.Node.LinkUnkeyCT}}" list="ct_keys" placeholder="e.g. ct8">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save courtesy tone assignments</button>
+    </div>
+  </div>
+</form>
+<form method="post" action="/nodes/{{.Node.Number}}/telemetry">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Tones &amp; audio ({{.TelemetrySect}})</h2>
+      {{template "help" "Courtesy tones, status beeps, and sound-file playback for this node. Each entry either plays a tone (frequency/duration/amplitude) or a named sound file — app_rpt accepts either in any of these fields, so this shows whichever this entry currently is."}}
+    </div>
+    {{if and .SkywarnInstalled .SkywarnStatus.CourtesyToneSwapEnabled}}
+    <p class="hint">SkywarnPlus's own courtesy-tone swap is enabled — one of these files may change automatically during an alert. See the SkywarnPlus tab.</p>
+    {{end}}
+    {{if .TelemetryRows}}
+    <table>
+      <thead><tr><th>Event</th><th>Setting</th></tr></thead>
+      <tbody>
+        {{range .TelemetryRows}}
+        <tr>
+          <td style="white-space:nowrap">
+            {{if .Label}}
+            <div class="label-row" style="margin-bottom:0">
+              <strong>{{.Label}}</strong>
+              {{if .Description}}{{template "help" .Description}}{{end}}
+            </div>
+            <div class="hint">{{.Key}}</div>
+            {{else}}
+            {{.Key}}
+            {{end}}
+          </td>
+          <td>
+            {{if eq .Mode "tone"}}
+            <div class="row" style="margin:0">
+              <div class="field" style="min-width:90px">
+                <label for="tone_{{.Key}}_freq1">Freq 1 (Hz)</label>
+                <input type="number" id="tone_{{.Key}}_freq1" name="tone_{{.Key}}_freq1" value="{{.Tone.Freq1}}">
+              </div>
+              <div class="field" style="min-width:90px">
+                <label for="tone_{{.Key}}_freq2">Freq 2 (Hz)</label>
+                <input type="number" id="tone_{{.Key}}_freq2" name="tone_{{.Key}}_freq2" value="{{.Tone.Freq2}}">
+              </div>
+              <div class="field" style="min-width:110px">
+                <label for="tone_{{.Key}}_duration">Duration (ms)</label>
+                <input type="number" id="tone_{{.Key}}_duration" name="tone_{{.Key}}_duration" value="{{.Tone.DurationMS}}">
+              </div>
+              <div class="field" style="min-width:100px">
+                <label for="tone_{{.Key}}_amplitude">Amplitude</label>
+                <input type="number" id="tone_{{.Key}}_amplitude" name="tone_{{.Key}}_amplitude" value="{{.Tone.Amplitude}}">
+              </div>
+            </div>
+            {{else if eq .Mode "tone-raw"}}
+            <input type="text" name="raw_{{.Key}}" value="{{.Value}}">
+            <div class="hint">Multi-part tone — edit as raw text (freq1,freq2,duration,amplitude per part).</div>
+            {{else}}
+            <input type="text" name="raw_{{.Key}}" value="{{.Value}}" list="sound_files" placeholder="a sound file name">
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="hint">No tones/audio entries found in this node's telemetry section.</p>
+    {{end}}
+    <div class="actions">
+      <button type="submit" class="primary">Save tones &amp; audio</button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Custom sound files</h2>
+    {{template "help" "Your own uploaded recordings, stored separately from app_rpt's built-in prompt library (shown in the pick-lists above as \"rpt/...\", which this app never modifies). Pick a file's name here to use it in idrecording or any tone/audio field above."}}
+  </div>
+  {{$anyCustom := false}}
+  {{range .SoundFiles}}{{if .Custom}}{{$anyCustom = true}}{{end}}{{end}}
+  {{if $anyCustom}}
+  <table>
+    <thead><tr><th>Name</th><th></th><th></th></tr></thead>
+    <tbody>
+      {{range .SoundFiles}}
+      {{if .Custom}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>
+          <button type="button" data-play-sound="/nodes/{{$.Node.Number}}/sounds/{{.Name}}/audio">Play</button>
+        </td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/sounds/{{.Name}}/delete" style="display:inline" data-confirm="Delete sound file {{.Name}}? Any field currently referencing it will stop working until you pick a replacement." data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No custom sound files uploaded yet.</p>
+  {{end}}
+</div>
+
+<form method="post" action="/nodes/{{.Node.Number}}/sounds/upload" enctype="multipart/form-data">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Upload a sound file</h2>
+      {{template "help" "Upload a WAV recording (e.g. a custom station ID or courtesy tone) and it's automatically converted to the format app_rpt needs. The conversion tool's own output is shown if anything goes wrong, rather than guessing at what happened."}}
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="sound_name">Name</label>
+        <input type="text" id="sound_name" name="sound_name" placeholder="my-station-id" required pattern="[a-zA-Z0-9_-]+">
+        <div class="hint">Letters, numbers, - and _ only. Uploading with an existing name replaces it.</div>
+      </div>
+      <div class="field">
+        <label for="sound_file">Audio file (WAV recommended)</label>
+        <input type="file" id="sound_file" name="sound_file" accept="audio/*" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Upload &amp; convert</button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Create from text</h2>
+    {{template "help" "Generates a sound file by speaking typed text with a downloaded Piper voice, entirely on this box — no internet or account needed. Saved through the same conversion as an upload, so it works anywhere a sound field accepts one."}}
+  </div>
+  {{if .TTSVoices}}
+  <form method="post" action="/nodes/{{.Node.Number}}/sounds/tts">
+    <input type="hidden" name="tts_engine" id="tts_engine" value="{{.TTSEngine}}">
+    <div class="row">
+      <div class="field">
+        <label for="tts_sound_name">Name</label>
+        <input type="text" id="tts_sound_name" name="sound_name" placeholder="weekend-net-reminder" required pattern="[a-zA-Z0-9_-]+">
+        <div class="hint">Letters, numbers, - and _ only. Generating with an existing name replaces it.</div>
+      </div>
+      <div class="field">
+        <label for="tts_voice">Voice</label>
+        <select id="tts_voice" name="tts_voice" required>
+          {{range .TTSVoices}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="tts_text">Text to speak</label>
+      <textarea id="tts_text" name="tts_text" rows="3" placeholder="The Tuesday night net starts at 8 PM." required></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" data-tts-preview="/nodes/{{.Node.Number}}/sounds/tts/preview">Preview</button>
+      <button type="submit" class="primary">Generate &amp; save</button>
+      <span class="hint" data-tts-preview-status></span>
+    </div>
+    {{if .TTSNotice}}<p class="hint" style="margin-top:8px">{{.TTSNotice}}</p>{{end}}
+  </form>
+  {{else if .TTSError}}
+  <p class="hint">{{.TTSError}}</p>
+  {{else}}
+  <p class="hint">No text-to-speech voices downloaded yet. Re-run this app's <code>install.sh</code> on the Pi to fetch Piper and a default voice automatically, or download a specific voice manually into <code>/etc/hamvoip-gui/piper-voices/</code> from <a href="https://huggingface.co/rhasspy/piper-voices">huggingface.co/rhasspy/piper-voices</a> (both the <code>.onnx</code> file and its matching <code>.onnx.json</code>), then reload this page.</p>
+  {{end}}
+</div>
+</div>
+
+<div data-tab-panel="network">
+<form method="post" action="/nodes/{{.Node.Number}}/registration">
+  <div class="card">
+    <h2>Connect to the AllStarLink network</h2>
+    <p class="section-intro">This is what lets your node talk to other stations over the internet — separate from the local connection address above, which works even without internet access.</p>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="reg_host">AllStarLink server</label>
+          {{template "help" "The server your node connects to. Use register.allstarlink.org unless AllStarLink support told you otherwise."}}
+        </div>
+        <input type="text" id="reg_host" name="reg_host" value="{{if .Registration}}{{.Registration.Host}}{{else}}register.allstarlink.org{{end}}" placeholder="register.allstarlink.org">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="reg_port">Port</label>
+          {{template "help" "Network port for the connection. Leave blank to use the standard port (4569) unless told otherwise."}}
+        </div>
+        <input type="text" id="reg_port" name="reg_port" value="{{if .Registration}}{{.Registration.Port}}{{end}}" placeholder="4569">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="reg_password">Registration password</label>
+          {{template "help" "The password AllStarLink gave you when you registered this node number on their website."}}
+        </div>
+        <input type="password" id="reg_password" name="reg_password" value="{{if .Registration}}{{.Registration.Password}}{{end}}" placeholder="your AllStarLink password">
+      </div>
+    </div>
+
+    <h2 style="margin-top:1.25rem">Advanced connection settings</h2>
+    <p class="section-intro">Usually only needs to be set once and left alone. The defaults shown in each field work for most nodes.</p>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="peer_type">Connection type</label>
+          {{template "help" "Almost always \"friend\" — controls how this node identifies itself when connecting."}}
+        </div>
+        <select id="peer_type" name="peer_type">
+          <option value="" {{if and .Peer (eq .Peer.Type "")}}selected{{end}}>(not set)</option>
+          <option value="friend" {{if or (not .Peer) (eq .Peer.Type "friend")}}selected{{end}}>friend (normal)</option>
+          <option value="peer" {{if and .Peer (eq .Peer.Type "peer")}}selected{{end}}>peer</option>
+          <option value="user" {{if and .Peer (eq .Peer.Type "user")}}selected{{end}}>user</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="peer_context">Routing category</label>
+          {{template "help" "Internal category for incoming connections. Typically radio-secure — don't change this unless you were specifically told to."}}
+        </div>
+        <input type="text" id="peer_context" name="peer_context" value="{{if .Peer}}{{.Peer.Context}}{{else}}radio-secure{{end}}" placeholder="radio-secure">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="peer_host">Network address</label>
+          {{template "help" "Almost always \"dynamic\" — meaning your node's internet address can change, which is normal for a home internet connection."}}
+        </div>
+        <input type="text" id="peer_host" name="peer_host" value="{{if .Peer}}{{.Peer.Host}}{{else}}dynamic{{end}}" placeholder="dynamic">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="peer_secret">Connection password</label>
+          {{template "help" "Verifies incoming connections to this node — often the same password as the registration password above."}}
+        </div>
+        <input type="password" id="peer_secret" name="peer_secret" value="{{if .Peer}}{{.Peer.Secret}}{{end}}" placeholder="often the same as the registration password">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="peer_auth">Password check method</label>
+          {{template "help" "How the password above is verified. plaintext is the default here; use whatever AllStarLink support tells you if you're unsure."}}
+        </div>
+        <select id="peer_auth" name="peer_auth">
+          <option value="" {{if and .Peer (eq .Peer.Auth "")}}selected{{end}}>(not set)</option>
+          <option value="md5" {{if and .Peer (eq .Peer.Auth "md5")}}selected{{end}}>md5</option>
+          <option value="rsa" {{if and .Peer (eq .Peer.Auth "rsa")}}selected{{end}}>rsa</option>
+          <option value="plaintext" {{if or (not .Peer) (eq .Peer.Auth "plaintext")}}selected{{end}}>plaintext (default)</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save registration</button>
+    </div>
+  </div>
+</form>
+</div>
+
+<div data-tab-panel="live">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Who's connected right now</h2>
+    {{template "help" "A live snapshot of other stations currently linked to this node."}}
+  </div>
+  {{if .LinkStatusErr}}
+  <p class="hint">Could not read live status: {{.LinkStatusErr}}</p>
+  {{else}}
+  <pre style="font-size:0.8rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem; white-space:pre-wrap; margin-top:0.75rem;">{{.LinkStatus}}</pre>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Connect or disconnect a node</h2>
+    {{template "help" "Fill in a node number and pick an action — this fills in the touch-tone sequence below, which you then review and send. Nothing happens until you click Send."}}
+  </div>
+  <p class="section-intro">These use AllStarLink's standard touch-tone codes (*3 connect, *2 connect for listening only, *1 disconnect). If the command list below has been customized, use the matching digits from that table instead.</p>
+  <div class="row">
+    <div class="field">
+      <label for="quick_target">Other node's number</label>
+      <input type="text" id="quick_target" data-target-node placeholder="2000">
+    </div>
+  </div>
+  <div class="actions" style="margin-top:0">
+    <button type="button" class="primary" data-fill-digits="*3">Connect (stay connected)</button>
+    <button type="button" data-fill-digits="*2">Connect (listen only)</button>
+    <button type="button" data-fill-digits="*1">Disconnect</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Send a touch-tone command now</h2>
+    {{template "help" "Sends the sequence below exactly as if it were dialed on the radio itself. Using the quick actions above fills this in for you, or you can type any sequence from the command list below."}}
+  </div>
+  <form method="post" action="/nodes/{{.Node.Number}}/dtmf" data-confirm="Send this command to node {{.Node.Number}} now? This can connect or disconnect live links.">
+    <div class="row">
+      <div class="field">
+        <label for="dtmf_digits">Touch-tone sequence</label>
+        <input type="text" id="dtmf_digits" name="digits" data-dtmf-field placeholder="*32000" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Send</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Command list ({{.FunctionsSect}})</h2>
+    {{template "help" "Every touch-tone command this node recognizes when dialed from a radio. The same list is used by the quick actions above."}}
+  </div>
+  {{if .Macros}}
+  <table>
+    <thead><tr><th>Digits</th><th>What it does</th><th></th></tr></thead>
+    <tbody>
+      {{range .Macros}}
+      <tr>
+        <td>{{.Digits}}</td>
+        <td>{{.Command}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/macros/{{.Digits}}/delete" style="display:inline" data-confirm="Delete command {{.Digits}}?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No commands defined yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.Node.Number}}/macros" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="macro_digits">Digits to dial</label>
+          {{template "help" "The touch-tone sequence someone dials on their radio to trigger this command."}}
+        </div>
+        <input type="text" id="macro_digits" name="digits" placeholder="1" required>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="macro_command">Command</label>
+          {{template "help" "The underlying app_rpt command that runs — for example ilink,3 connects permanently to whatever node number is dialed next."}}
+        </div>
+        <input type="text" id="macro_command" name="command" list="function_reference" placeholder="ilink,3" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add / update command</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Saved macros ({{.MacroSect}})</h2>
+    {{template "help" "A macro is a saved sequence of touch-tone commands that runs all at once from a single dial — for example, disconnecting one node and connecting another in one step. Triggered with the \"macro\" command in the Command list above (e.g. macro,1 runs the macro saved as \"1\" here)."}}
+  </div>
+  {{if .MacroDefs}}
+  <table>
+    <thead><tr><th>Macro number</th><th>Sequence it runs</th><th></th></tr></thead>
+    <tbody>
+      {{range .MacroDefs}}
+      <tr>
+        <td>{{.Digits}}</td>
+        <td>{{.Command}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/macrodefs/{{.Digits}}/delete" style="display:inline" data-confirm="Delete macro {{.Digits}}?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No macros defined yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.Node.Number}}/macrodefs" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="macrodef_digits">Macro number</label>
+          {{template "help" "The key used to run this macro — for example, saving this as 1 means the command macro,1 (in the Command list above) will run it."}}
+        </div>
+        <input type="text" id="macrodef_digits" name="digits" placeholder="1" required>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="macrodef_sequence">Sequence to run</label>
+          {{template "help" "The touch-tone sequence this macro plays back, exactly as if you'd dialed each digit yourself — can chain multiple commands together, e.g. *12000*32001 disconnects node 2000 then connects node 2001."}}
+        </div>
+        <input type="text" id="macrodef_sequence" name="sequence" placeholder="*12000*32001" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add / update macro</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Function reference</h2>
+    {{template "help" "The building blocks you can type into the Command field above. Click that field to pick from this list directly."}}
+  </div>
+  <p class="section-intro">This covers the commands most nodes use. app_rpt supports further advanced functions (playing sound files, reading hardware sensors, running saved macros, and more) — check the AllStarLink/app_rpt documentation for anything not listed here, and for the full set of "control operator" (cop) sub-commands, which vary by what your node needs.</p>
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>ilink,1</td><td>Disconnect the most recently connected node</td></tr>
+      <tr><td>ilink,2</td><td>Connect to a node, listen-only — you can hear them, they can't hear you</td></tr>
+      <tr><td>ilink,3</td><td>Connect to a node, both directions — stays connected until manually disconnected</td></tr>
+      <tr><td>ilink,5</td><td>Announce which nodes are currently connected</td></tr>
+      <tr><td>ilink,6</td><td>Disconnect every connected node at once</td></tr>
+      <tr><td>ilink,8</td><td>Connect to a node, listen-only, temporary — drops automatically when the repeater goes idle</td></tr>
+      <tr><td>status,1</td><td>Announce this node's own number and status</td></tr>
+      <tr><td>autopatchup</td><td>Start an autopatch call (dial out through a connected phone line/gateway, if one is set up)</td></tr>
+      <tr><td>autopatchdn</td><td>End the current autopatch call</td></tr>
+      <tr><td>cop,&lt;n&gt;</td><td>"Control operator" — local system actions like reloading configuration. Which number does what depends on your setup; see the documentation.</td></tr>
+      <tr><td>macro,&lt;n&gt;</td><td>Runs a saved sequence of commands in one dial — macros are defined elsewhere in rpt.conf</td></tr>
+    </tbody>
+  </table>
+</div>
+</div>
+
+<div data-tab-panel="automation">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Scheduled connections ({{.SchedulerSect}})</h2>
+    {{template "help" "Automatically connect or disconnect this node from another at specific days/times, using Asterisk's own scheduler directly — this keeps working even if this page isn't open, and across a reboot."}}
+  </div>
+  {{if .AutomationConnections}}
+  <table>
+    <thead><tr><th>Action</th><th>Schedule (min hour dom month dow)</th><th></th></tr></thead>
+    <tbody>
+      {{range .AutomationConnections}}
+      <tr>
+        <td>{{if .Recognized}}{{.Label}}{{else}}<span class="hint">{{.Label}}</span>{{end}}</td>
+        <td>{{.TimeSpec}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/automation/connections/{{.MacroNum}}/delete" style="display:inline" data-confirm="Delete this scheduled action?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No scheduled connections yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/connections" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="automation_action">Action</label>
+          {{template "help" "What to do when the schedule below matches."}}
+        </div>
+        <select id="automation_action" name="action" required>
+          <option value="connect_stay">Connect (stay connected)</option>
+          <option value="connect_listen">Connect (listen only)</option>
+          <option value="disconnect_one">Disconnect a specific node</option>
+          <option value="disconnect_all">Disconnect all</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="automation_target">Node number</label>
+          {{template "help" "Which node to connect to or disconnect. Not needed for \"Disconnect all\"."}}
+        </div>
+        <input type="text" id="automation_target" name="target" placeholder="2000">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="min-width:90px">
+        <label for="automation_minute">Minute</label>
+        <input type="text" id="automation_minute" name="minute" value="*" placeholder="* or 0-59" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="automation_hour">Hour</label>
+        <input type="text" id="automation_hour" name="hour" value="*" placeholder="* or 0-23" required>
+      </div>
+      <div class="field" style="min-width:110px">
+        <label for="automation_dom">Day of month</label>
+        <input type="text" id="automation_dom" name="dom" value="*" placeholder="* or 1-31" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="automation_month">Month</label>
+        <input type="text" id="automation_month" name="month" value="*" placeholder="* or 1-12" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Days of week</label>
+        {{template "help" "Leave all unchecked for every day. Check several to schedule the same action on each — app_rpt's own scheduler only allows one day per entry, so this creates one entry per day picked, each then listed and deletable on its own."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="checkbox" name="weekday" value="0"> Sun</label>
+        <label><input type="checkbox" name="weekday" value="1"> Mon</label>
+        <label><input type="checkbox" name="weekday" value="2"> Tue</label>
+        <label><input type="checkbox" name="weekday" value="3"> Wed</label>
+        <label><input type="checkbox" name="weekday" value="4"> Thu</label>
+        <label><input type="checkbox" name="weekday" value="5"> Fri</label>
+        <label><input type="checkbox" name="weekday" value="6"> Sat</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add scheduled connection</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Scheduled sound playback</h2>
+    {{template "help" "Automatically play a sound file at specific days/times. Runs from this app itself, not Asterisk's own scheduler (app_rpt has no native way to schedule arbitrary sound playback) — so this only fires while hamvoip-gui is running."}}
+  </div>
+  {{if .SoundSchedules}}
+  <table>
+    <thead><tr><th>File</th><th>Reach</th><th>Schedule</th><th></th></tr></thead>
+    <tbody>
+      {{range .SoundSchedules}}
+      <tr>
+        <td>{{.File}}</td>
+        <td>{{if eq .Reach "network"}}Local + linked nodes{{else}}Local only{{end}}</td>
+        <td>{{.Minute}} {{.Hour}} {{.DayOfMonth}} {{.Month}} {{if .DaysOfWeek}}{{range $i, $d := .DaysOfWeek}}{{if $i}},{{end}}{{$d}}{{end}}{{else}}*{{end}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/automation/sounds/{{.ID}}/delete" style="display:inline" data-confirm="Delete this scheduled sound?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No scheduled sound playback yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/sounds" style="margin-top:1rem">
+    <div class="field">
+      <div class="label-row">
+        <label for="sound_schedule_file">Sound file</label>
+        {{template "help" "Pick from your uploaded files or app_rpt's built-in library (see Tones & Audio)."}}
+      </div>
+      <input type="text" id="sound_schedule_file" name="sound_file" list="sound_files" placeholder="a sound file name" required>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Reach</label>
+        {{template "help" "\"Local only\" plays over this node's own transmitter. \"Local + linked nodes\" also tries to reach anyone currently connected — on some setups (simplex/link-adapter nodes) this falls back to local-only automatically."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="radio" name="reach" value="local" checked> Local only</label>
+        <label><input type="radio" name="reach" value="network"> Local + linked nodes</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_minute">Minute</label>
+        <input type="text" id="sound_schedule_minute" name="minute" value="*" placeholder="* or 0-59" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_hour">Hour</label>
+        <input type="text" id="sound_schedule_hour" name="hour" value="*" placeholder="* or 0-23" required>
+      </div>
+      <div class="field" style="min-width:110px">
+        <label for="sound_schedule_dom">Day of month</label>
+        <input type="text" id="sound_schedule_dom" name="dom" value="*" placeholder="* or 1-31" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_month">Month</label>
+        <input type="text" id="sound_schedule_month" name="month" value="*" placeholder="* or 1-12" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Days of week</label>
+        {{template "help" "Leave all unchecked for every day."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="checkbox" name="weekday" value="0"> Sun</label>
+        <label><input type="checkbox" name="weekday" value="1"> Mon</label>
+        <label><input type="checkbox" name="weekday" value="2"> Tue</label>
+        <label><input type="checkbox" name="weekday" value="3"> Wed</label>
+        <label><input type="checkbox" name="weekday" value="4"> Thu</label>
+        <label><input type="checkbox" name="weekday" value="5"> Fri</label>
+        <label><input type="checkbox" name="weekday" value="6"> Sat</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add scheduled sound</button>
+    </div>
+  </form>
+</div>
+</div>
+<div data-tab-panel="skywarnplus">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Weather Alerts (SkywarnPlus)</h2>
+    {{template "help" "Announces National Weather Service alerts for chosen counties over this node. A third-party, no-longer-maintained tool (github.com/Mason10198/SkywarnPlus) — installed as an opt-in step by this app's install.sh, not from here."}}
+  </div>
+  {{if not .SkywarnInstalled}}
+  <p class="hint">Not installed. Re-run this app's <code>install.sh</code> on the Pi and choose to install SkywarnPlus, then reload this page.</p>
+  {{else}}
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/skywarn/toggle">
+    <div class="row">
+      <div class="field">
+        <label for="skywarn_enable">Weather alerts</label>
+        <select id="skywarn_enable" name="enable">
+          <option value="true" {{if .SkywarnStatus.Enable}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.Enable}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="skywarn_sayalert">Announce new alerts</label>
+        <select id="skywarn_sayalert" name="sayalert">
+          <option value="true" {{if .SkywarnStatus.SayAlert}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.SayAlert}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="skywarn_sayallclear">Announce all-clear</label>
+        <select id="skywarn_sayallclear" name="sayallclear">
+          <option value="true" {{if .SkywarnStatus.SayAllClear}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.SayAllClear}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="skywarn_tailmessage">Tail message reminder</label>
+          {{template "help" "Periodically repeats active alerts in the courtesy tail message played between transmissions."}}
+        </div>
+        <select id="skywarn_tailmessage" name="tailmessage">
+          <option value="true" {{if .SkywarnStatus.Tailmessage}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.Tailmessage}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="skywarn_alertscript">AlertScript</label>
+          {{template "help" "Runs SkywarnPlus's own AlertScript automation — which shell/DTMF commands run for which alerts is configured in its config.yaml directly, not here."}}
+        </div>
+        <select id="skywarn_alertscript" name="alertscript">
+          <option value="true" {{if .SkywarnStatus.AlertScript}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.AlertScript}}selected{{end}}>Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save weather alert settings</button>
+    </div>
+  </form>
+
+  {{if .SkywarnNodeRegistered}}
+  <p class="hint" style="margin-top:1rem">This node ({{.Node.Number}}) is registered to receive weather alert announcements.</p>
+  {{else}}
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/skywarn/register" style="margin-top:1rem">
+    <p class="hint">This node ({{.Node.Number}}) isn't registered with SkywarnPlus yet — it won't announce alerts here until you add it.</p>
+    <div class="actions">
+      <button type="submit" class="primary">Add this node</button>
+    </div>
+  </form>
+  {{end}}
+
+  <h2 style="margin-top:1.25rem">County codes</h2>
+  {{if .SkywarnStatus.CountyCodes}}
+  <table>
+    <thead><tr><th>Code</th><th></th></tr></thead>
+    <tbody>
+      {{range .SkywarnStatus.CountyCodes}}
+      <tr>
+        <td>{{.}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/automation/skywarn/counties/{{.}}/delete" style="display:inline" data-confirm="Remove county {{.}} from weather alerts?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No county codes configured yet — alerts won't fire for anywhere until you add at least one.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/skywarn/counties" style="margin-top:1rem">
+    <div class="field">
+      <div class="label-row">
+        <label for="skywarn_county">Add a county</label>
+        {{template "help" "Search by county name or state — find yours at alerts.weather.gov if you're not sure."}}
+      </div>
+      <input type="text" id="skywarn_county" name="code" list="county_codes" placeholder="e.g. Saline, AR (ARC125)" required>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add county</button>
+    </div>
+  </form>
+
+  <h2 style="margin-top:1.25rem">Pushover notifications</h2>
+  {{template "help" "Sends weather alert notifications to your phone or other devices via Pushover (pushover.net) — free, but needs your own account."}}
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/skywarn/pushover" style="margin-top:0.5rem">
+    <div class="row">
+      <div class="field">
+        <label for="pushover_enable">Pushover notifications</label>
+        <select id="pushover_enable" name="pushover_enable">
+          <option value="true" {{if .SkywarnStatus.Pushover.Enable}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.Pushover.Enable}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="pushover_debug">Verbose messages</label>
+          {{template "help" "Includes extra detail (which counties/alerts changed) in each notification."}}
+        </div>
+        <select id="pushover_debug" name="pushover_debug">
+          <option value="true" {{if .SkywarnStatus.Pushover.Debug}}selected{{end}}>On</option>
+          <option value="false" {{if not .SkywarnStatus.Pushover.Debug}}selected{{end}}>Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="pushover_userkey">User key</label>
+        <input type="password" id="pushover_userkey" name="pushover_userkey" value="{{.SkywarnStatus.Pushover.UserKey}}" placeholder="from pushover.net">
+      </div>
+      <div class="field">
+        <label for="pushover_apitoken">API token</label>
+        <input type="password" id="pushover_apitoken" name="pushover_apitoken" value="{{.SkywarnStatus.Pushover.APIToken}}" placeholder="from your Pushover application">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save Pushover settings</button>
+    </div>
+  </form>
+
+  <h2 style="margin-top:1.25rem">SkyDescribe (detailed alert descriptions)</h2>
+  {{template "help" "Reads the full NWS description of an alert aloud using the VoiceRSS text-to-speech service — needs your own free API key from VoiceRSS.org. This only configures SkyDescribe; trigger it with a DTMF command on the Live & Commands tab (e.g. running SkyDescribe.py with an alert number), or via AlertScript's own config.yaml mappings."}}
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/skywarn/skydescribe" style="margin-top:0.5rem">
+    <div class="row">
+      <div class="field">
+        <label for="skydescribe_apikey">VoiceRSS API key</label>
+        <input type="password" id="skydescribe_apikey" name="skydescribe_apikey" value="{{.SkywarnStatus.SkyDescribe.APIKey}}" placeholder="from VoiceRSS.org">
+      </div>
+      <div class="field">
+        <label for="skydescribe_language">Language</label>
+        <input type="text" id="skydescribe_language" name="skydescribe_language" value="{{.SkywarnStatus.SkyDescribe.Language}}" placeholder="en-us">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="skydescribe_speed">Speed</label>
+          {{template "help" "-10 (slowest) to 10 (fastest)."}}
+        </div>
+        <input type="number" id="skydescribe_speed" name="skydescribe_speed" value="{{.SkywarnStatus.SkyDescribe.Speed}}" min="-10" max="10" placeholder="1">
+      </div>
+      <div class="field">
+        <label for="skydescribe_voice">Voice</label>
+        <input type="text" id="skydescribe_voice" name="skydescribe_voice" value="{{.SkywarnStatus.SkyDescribe.Voice}}" placeholder="John">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="skydescribe_maxwords">Max words</label>
+          {{template "help" "Caps how much of a long alert description gets read, to avoid exceeding your node's transmit timeout. ~130 words is about 60 seconds."}}
+        </div>
+        <input type="number" id="skydescribe_maxwords" name="skydescribe_maxwords" value="{{.SkywarnStatus.SkyDescribe.MaxWords}}" min="1" placeholder="150">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save SkyDescribe settings</button>
+    </div>
+  </form>
+
+  <h2 style="margin-top:1.25rem">WX courtesy tone</h2>
+  {{template "help" "A safer alternative to SkywarnPlus's own courtesy-tone swap: this app checks SkywarnPlus's own active-alert count itself and applies whichever state you pick below when it changes. Each of Normal/WX is independently either a sound file (its bytes are swapped onto the courtesy tone's existing destination file — no Asterisk restart needed) or a tone (its frequency/duration/amplitude is written into rpt.conf and applied with a live app_rpt reload, not a full restart)."}}
+  {{if .WXTones}}
+  <table>
+    <thead><tr><th>Courtesy tone</th><th>Normal</th><th>WX</th><th>Current</th><th></th></tr></thead>
+    <tbody>
+      {{range .WXTones}}
+      <tr>
+        <td>{{.CTKey}}</td>
+        <td>{{if eq .NormalType "tone"}}{{.NormalTone}}{{else}}{{.NormalSound}}{{end}}</td>
+        <td>{{if eq .WXType "tone"}}{{.WXTone}}{{else}}{{.WXSound}}{{end}}</td>
+        <td>{{if eq .Mode "wx"}}WX{{else}}Normal{{end}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.Node.Number}}/automation/wxtone/{{.ID}}/delete" style="display:inline" data-confirm="Remove this WX courtesy tone mapping?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No WX courtesy tone mappings configured yet.</p>
+  {{end}}
+
+  {{if .CTKeys}}
+  <form method="post" action="/nodes/{{.Node.Number}}/automation/wxtone" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <label for="wxtone_ctkey">Courtesy tone key</label>
+        <select id="wxtone_ctkey" name="wxtone_ctkey" required>
+          <option value="">Choose one</option>
+          {{range .CTKeys}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <strong>Normal state</strong>
+        </div>
+        <label><input type="radio" name="wxtone_normal_type" value="sound" data-type-toggle checked> Sound file</label>
+        <label><input type="radio" name="wxtone_normal_type" value="tone" data-type-toggle> Tone</label>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <strong>WX state</strong>
+        </div>
+        <label><input type="radio" name="wxtone_wx_type" value="sound" data-type-toggle checked> Sound file</label>
+        <label><input type="radio" name="wxtone_wx_type" value="tone" data-type-toggle> Tone</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" data-type-toggle-section="wxtone_normal_type:sound">
+        <label for="wxtone_normal_sound">Normal sound</label>
+        <input type="text" id="wxtone_normal_sound" name="wxtone_normal_sound" list="sound_files" placeholder="a sound file name">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_normal_freq1">Normal Freq 1 (Hz)</label>
+        <input type="number" id="wxtone_normal_freq1" name="wxtone_normal_freq1">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_normal_freq2">Normal Freq 2 (Hz)</label>
+        <input type="number" id="wxtone_normal_freq2" name="wxtone_normal_freq2">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:110px">
+        <label for="wxtone_normal_duration">Normal duration (ms)</label>
+        <input type="number" id="wxtone_normal_duration" name="wxtone_normal_duration">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:100px">
+        <label for="wxtone_normal_amplitude">Normal amplitude</label>
+        <input type="number" id="wxtone_normal_amplitude" name="wxtone_normal_amplitude">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" data-type-toggle-section="wxtone_wx_type:sound">
+        <label for="wxtone_wx_sound">WX sound</label>
+        <input type="text" id="wxtone_wx_sound" name="wxtone_wx_sound" list="sound_files" placeholder="a sound file name">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_wx_freq1">WX Freq 1 (Hz)</label>
+        <input type="number" id="wxtone_wx_freq1" name="wxtone_wx_freq1">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_wx_freq2">WX Freq 2 (Hz)</label>
+        <input type="number" id="wxtone_wx_freq2" name="wxtone_wx_freq2">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:110px">
+        <label for="wxtone_wx_duration">WX duration (ms)</label>
+        <input type="number" id="wxtone_wx_duration" name="wxtone_wx_duration">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:100px">
+        <label for="wxtone_wx_amplitude">WX amplitude</label>
+        <input type="number" id="wxtone_wx_amplitude" name="wxtone_wx_amplitude">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add WX courtesy tone</button>
+    </div>
+  </form>
+  {{else}}
+  <p class="hint">This node has no courtesy-tone keys in its telemetry section yet — add one on the <code>Tones &amp; Audio</code> tab first.</p>
+  {{end}}
+
+  <p class="hint" style="margin-top:1rem">AlertScript's own command/DTMF mappings, SkywarnPlus's own courtesy-tone/ID swap, and its ID-recording swap aren't managed here — see the <a href="https://github.com/Mason10198/SkywarnPlus">upstream documentation</a> and edit its config.yaml directly for those.</p>
+  {{end}}
+</div>
+</div>
+{{end}}
+{{template "layout" .}}

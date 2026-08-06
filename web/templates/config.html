@@ -1,0 +1,60 @@
+{{define "title"}}Raw Config{{end}}
+{{define "content"}}
+<h1>Raw config editor</h1>
+<div class="card">
+  <h2>Files</h2>
+  <div class="actions" style="margin-top:0">
+    {{range .Files}}
+    <a class="btn" href="/config/{{.}}">{{.}}</a>
+    {{end}}
+  </div>
+</div>
+
+{{if .Selected}}
+<form method="post" action="/config/{{.Selected}}">
+  {{range .Sections}}
+  {{$section := .Name}}
+  <div class="card">
+    <h2>[{{.Name}}]</h2>
+    {{if .Keys}}
+    <table>
+      <thead><tr><th>Key</th><th>Value</th></tr></thead>
+      <tbody>
+        {{range $i, $kv := .Keys}}
+        <tr>
+          <td>{{$kv.Key}}</td>
+          <td><input type="text" name="kv:{{$section}}:{{$i}}" value="{{$kv.Value}}"></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="hint">(empty section)</p>
+    {{end}}
+    <div class="row" style="margin-top:0.75rem">
+      <div class="field">
+        <label>Add key</label>
+        <input type="text" name="new_key:{{.Name}}" placeholder="key name">
+      </div>
+      <div class="field">
+        <label>Value</label>
+        <input type="text" name="new_value:{{.Name}}" placeholder="value">
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="card">
+    <h2>Add section</h2>
+    <div class="field">
+      <input type="text" name="new_section" placeholder="section name">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary">Save {{.Selected}}</button>
+  </div>
+</form>
+{{end}}
+{{end}}
+{{template "layout" .}}

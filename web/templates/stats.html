@@ -1,0 +1,66 @@
+{{define "title"}}Status{{end}}
+{{define "content"}}
+<h1>Status</h1>
+
+<div class="card">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+    <h2 style="margin:0">System status</h2>
+    <span class="status-pill" data-status-pill><span class="dot"></span><span class="label">Checking…</span></span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="label">Hostname</div>
+      <div class="value" data-hostname>{{.Status.Hostname}}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Uptime</div>
+      <div class="value" data-uptime>{{.Status.Uptime}}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Configured nodes</div>
+      <div class="value">{{len .Nodes}}</div>
+    </div>
+  </div>
+</div>
+
+{{if .Quick}}
+{{range .Quick}}
+<div class="card" data-live-node="{{.Node.Number}}">
+  <div class="live-head">
+    <div class="label-row">
+      <h2 style="margin:0">Node {{.Node.Number}} stats</h2>
+      {{template "help" "Every field app_rpt's own rpt stats command reports for this node, re-read on page load and pushed live as it changes. The quick on-air glance and link/unlink action are on the Home page."}}
+      <span class="live-dot" data-live-indicator title="Live — updating as state changes"></span>
+    </div>
+  </div>
+  {{if .StatsErr}}
+  <p class="hint">Could not read live status: {{.StatsErr}}</p>
+  {{else if .StatsOK}}
+  <div class="table-scroll">
+    <table class="data-table stats-table">
+      <tbody>
+        {{range .Stats}}
+        <tr><th scope="row">{{.Label}}</th><td{{if eq .Label "Signal on input"}} data-live-signal{{end}}>{{.Value}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else if .StatsRaw}}
+  <pre class="raw-block">{{.StatsRaw}}</pre>
+  {{end}}
+</div>
+
+<div class="card" data-live-history="{{.Node.Number}}">
+  {{template "node_history" .}}
+</div>
+{{end}}
+{{else}}
+<div class="card">
+  <p class="hint">No nodes configured yet.</p>
+  <div class="actions">
+    <a class="btn primary" href="/nodes/new">Add node</a>
+  </div>
+</div>
+{{end}}
+{{end}}
+{{template "layout" .}}

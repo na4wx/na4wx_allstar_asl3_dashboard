@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="login-wrap">
+  <div class="card">
+    <h1>Initial setup</h1>
+    <p class="hint">No admin account exists yet. Create one to secure this GUI before continuing — it can edit Asterisk configuration and run privileged commands on this node.</p>
+    <form method="post" action="/setup">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="8">
+        <div class="hint">At least 8 characters.</div>
+      </div>
+      <div class="field">
+        <label for="confirm">Confirm password</label>
+        <input type="password" id="confirm" name="confirm" required minlength="8">
+      </div>
+      <div class="actions">
+        <button type="submit" class="primary">Create account</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{template "layout" .}}

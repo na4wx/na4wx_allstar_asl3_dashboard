@@ -1,0 +1,36 @@
+{{define "title"}}Device {{.Device.Name}}{{end}}
+{{define "content"}}
+<h1>Radio device: {{.Device.Name}}</h1>
+<p class="hint">To create a new device, add or edit a node and choose "create a new device" under Radio hardware — this page is for adjusting an existing one.</p>
+
+<datalist id="ctcss_tones">
+  {{range .CTCSSTones}}<option value="{{.}}">{{.}} Hz</option>{{end}}
+</datalist>
+
+<datalist id="tx_audio_sources">
+  <option value="voice">voice — normal repeater/simplex audio</option>
+  <option value="no">no — none</option>
+  <option value="tone">tone — tone only</option>
+  <option value="composite">composite — advanced</option>
+</datalist>
+
+<form method="post" action="/system/radio/{{.File}}/{{.Device.Name}}">
+  <div class="card">
+    <h2>Device</h2>
+    <div class="field">
+      <label for="name">Device name</label>
+      <input type="text" id="name" name="name" value="{{.Device.Name}}" readonly>
+    </div>
+  </div>
+
+  {{template "radio_device_fields" .Device}}
+
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a class="btn" href="/system">Cancel</a>
+    <span style="flex:1"></span>
+    <button type="submit" formaction="/system/radio/{{.File}}/{{.Device.Name}}/delete" class="danger" data-confirm="Delete device {{.Device.Name}} from {{.File}}? This cannot be undone." data-confirm-danger>Delete device</button>
+  </div>
+</form>
+{{end}}
+{{template "layout" .}}

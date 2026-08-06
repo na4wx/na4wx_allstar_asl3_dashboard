@@ -1,0 +1,89 @@
+{{define "title"}}Add node{{end}}
+{{define "content"}}
+<h1>Add a node</h1>
+<p class="section-intro">Just the essentials — radio hardware settings, the dialplan, and a working command list all get set up automatically. You can fine-tune anything afterward from the node's own page.</p>
+
+<form method="post" action="/nodes">
+  <div class="card">
+    <div class="field">
+      <div class="label-row">
+        <label for="number">Node number</label>
+        {{template "help" "The unique number assigned to your node when you registered at allstarlink.org, e.g. 546051."}}
+      </div>
+      <input type="text" id="number" name="number" value="{{.Number}}" required pattern="[0-9]+" placeholder="546051">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="callsign">Callsign</label>
+        {{template "help" "Used to build your station ID announcement, required periodically by FCC rules. You can change how it's announced later if needed."}}
+      </div>
+      <input type="text" id="callsign" name="callsign" value="{{.Callsign}}" required placeholder="N0CALL">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="reg_password">AllStarLink registration password</label>
+        {{template "help" "The password AllStarLink gave you when you registered this node number on their website. This connects your node to the internet so it can talk to other stations."}}
+      </div>
+      <input type="password" id="reg_password" name="reg_password" required placeholder="your AllStarLink password">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label for="duplex">Repeater mode</label>
+        {{template "help" "Controls whether this acts as a full repeater (receive and transmit at the same time, with status beeps) or a simpler simplex setup. If you're not sure, \"full repeater\" is the normal choice."}}
+      </div>
+      <select id="duplex" name="duplex">
+        <option value="0" {{if eq .Duplex "0"}}selected{{end}}>Simplex — one frequency, no status tones</option>
+        <option value="1" {{if eq .Duplex "1"}}selected{{end}}>Simplex — one frequency, with status tones</option>
+        <option value="2" {{if or (eq .Duplex "") (eq .Duplex "2")}}selected{{end}}>Full repeater — normal setup, with status tones</option>
+        <option value="3" {{if eq .Duplex "3"}}selected{{end}}>Full repeater — with status tones, but doesn't repeat audio</option>
+        <option value="4" {{if eq .Duplex "4"}}selected{{end}}>Full repeater — normal setup, but no repeat during autopatch calls</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <div class="label-row">
+        <label for="interface">Radio interface</label>
+        {{template "help" "SHARI and similar SA818 USB nodes detect incoming signals on an inverted line compared to a generic USB sound interface. Getting this wrong is very visible: pick \"generic\" on a SHARI and the node believes it's receiving all the time, so it keys the transmitter and holds it down continuously. Pick \"SHARI\" on generic hardware and the node simply never hears anything. Either way you can change it afterward from the node's own page."}}
+      </div>
+      <select id="interface" name="interface">
+        <option value="shari" {{if or (eq .Interface "") (eq .Interface "shari")}}selected{{end}}>SHARI / SA818 USB node (most ready-made kits)</option>
+        <option value="generic" {{if eq .Interface "generic"}}selected{{end}}>Generic USB sound interface (RIM, RA-40, homebrew)</option>
+      </select>
+      <div class="hint">If your node starts transmitting constantly right after setup, this is the setting to change.</div>
+    </div>
+
+    {{if .DetectedDevice}}
+    <div class="field">
+      <div class="label-row">
+        <label>Radio device</label>
+        {{template "help" "Detected automatically from what's plugged in right now — nothing to fill in here."}}
+      </div>
+      <div class="hint">Using {{.DetectedDevice.ID}}{{if .DetectedDevice.Description}} ({{.DetectedDevice.Description}}){{end}}</div>
+      <input type="hidden" name="device_hint" value="{{.DetectedDevice.ID}}">
+    </div>
+    {{else}}
+    <div class="field">
+      <div class="label-row">
+        <label for="device_hint">Radio device</label>
+        {{template "help" "Which USB sound interface your radio is connected through."}}
+      </div>
+      {{if .DetectedCards}}
+      <select id="device_hint" name="device_hint">
+        {{range .DetectedCards}}<option value="{{.ID}}" {{if eq .ID $.DeviceHint}}selected{{end}}>{{.ID}}{{if .Description}} ({{.Description}}){{end}}</option>{{end}}
+      </select>
+      <div class="hint">Multiple USB sound devices detected — pick the one your radio is connected to.</div>
+      {{else}}
+      <input type="text" id="device_hint" name="device_hint" value="{{.DeviceHint}}" placeholder="usb">
+      <div class="hint">No USB sound devices detected. If you're testing this away from the actual node, that's expected — type a name to use (e.g. usb), or plug in your interface and reload this page.</div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary">Set up node</button>
+    <a class="btn" href="/">Cancel</a>
+  </div>
+</form>
+{{end}}
+{{template "layout" .}}

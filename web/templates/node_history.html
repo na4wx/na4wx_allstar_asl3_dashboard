@@ -1,0 +1,74 @@
+{{define "node_history"}}
+<div class="label-row">
+  <h2 style="margin:0">Node {{.Node.Number}} history</h2>
+  {{template "help" "How this node's connections have changed over time. A new record is kept each time the connected-node list changes, retaining the last 10. Updates live as connections change."}}
+</div>
+<div class="field">
+  <div class="label-row">
+    <label>Connected nodes</label>
+    {{template "help" "Other stations linked to this node, from app_rpt's own rpt nodes command. A new row is recorded each time this changes, keeping the last 10 — so you can see what connected and when, not just what's connected right now."}}
+  </div>
+  {{if .ConnectedErr}}
+  <p class="hint">Could not read: {{.ConnectedErr}}</p>
+  {{else if .ConnectedHistory}}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>When</th><th>Nodes</th></tr>
+      </thead>
+      <tbody>
+        {{range .ConnectedHistory}}
+        <tr>
+          <td class="nowrap">{{.When}}<span class="muted"> · {{.Ago}}</span></td>
+          <td>
+            {{if .Nodes}}{{range .Nodes}}<span class="node-chip"{{if .Detail}} title="{{.Detail}}"{{end}}><span class="tag">{{.Number}}</span>{{if .Callsign}}<span class="node-call">{{.Callsign}}</span>{{end}}</span> {{end}}{{else}}<span class="muted">nothing connected</span>{{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="hint">No records yet — the first one appears as soon as this node's connections change.</p>
+  {{end}}
+</div>
+
+<div class="field" style="margin-top:1.25rem">
+  <div class="label-row">
+    <label>Link activity</label>
+    {{template "help" "Connection detail from app_rpt's rpt lstats command, recorded at each of the same moments as the table above. Column headings come from app_rpt's own output rather than being fixed by this app, so they match whatever your version reports."}}
+  </div>
+  {{if .ActivityErr}}
+  <p class="hint">Could not read: {{.ActivityErr}}</p>
+  {{else if .ActivityHistory}}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>When</th>
+          {{range .ActivityHeaders}}<th>{{.}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{$cols := len .ActivityHeaders}}
+        {{range .ActivityHistory}}
+        <tr>
+          <td class="nowrap">{{.When}}<span class="muted"> · {{.Ago}}</span></td>
+          {{if .Empty}}
+          <td colspan="{{if $cols}}{{$cols}}{{else}}1{{end}}"><span class="muted">no links at this point</span></td>
+          {{else}}
+          {{range .Fields}}<td>{{.}}</td>{{end}}
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="hint">No records yet — the first one appears as soon as this node's connections change.</p>
+  {{end}}
+</div>
+<div class="actions">
+  <a class="btn" href="/nodes/{{.Node.Number}}">Full node settings</a>
+</div>
+{{end}}

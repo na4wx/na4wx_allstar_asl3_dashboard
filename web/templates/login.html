@@ -1,0 +1,21 @@
+{{define "content"}}
+<div class="login-wrap">
+  <div class="card">
+    <h1>Log in</h1>
+    <form method="post" action="/login">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      <div class="actions">
+        <button type="submit" class="primary">Log in</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{template "layout" .}}

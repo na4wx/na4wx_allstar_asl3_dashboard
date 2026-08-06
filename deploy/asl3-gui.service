@@ -1,0 +1,25 @@
+[Unit]
+Description=ASL3 Config GUI
+# Unlike HamVoIP (safe_asterisk, no native unit to order against), ASL3
+# runs Asterisk as a real systemd service -- confirmed against
+# AllStarLink's own docs (allstarlink.github.io/adv-topics/permissions/).
+# Ordered after it so the dashboard doesn't come up mid-Asterisk-startup,
+# though it doesn't hard-require it (Requires=) since viewing/editing
+# config while Asterisk is down is still useful.
+After=network.target asterisk.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/asl3-gui -addr :8089
+Restart=on-failure
+RestartSec=2
+# Root, same as the HamVoIP app -- it edits Asterisk config and calls
+# systemctl/asterisk -rx, which needs broader rights than ASL3's own
+# PolicyKit rules grant the dedicated non-root "asterisk" user. Root
+# already has systemctl rights regardless of those polkit rules, but
+# this is flagged to actually confirm against a real ASL3 node rather
+# than assumed -- see the project plan's own "Rebuilt for ASL3" section.
+User=root
+
+[Install]
+WantedBy=multi-user.target
