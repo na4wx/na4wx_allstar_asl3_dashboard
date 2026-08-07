@@ -82,6 +82,7 @@ func main() {
 
 	srv.StartWiFiWatchdog(context.Background())
 	srv.StartCloudAgent(context.Background())
+	srv.StartSoundSchedulePoller(context.Background())
 
 	log.Printf("asl3-gui listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {

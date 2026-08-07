@@ -7,6 +7,7 @@
   <button type="button" data-tab-target="radio">Radio</button>
   <button type="button" data-tab-target="network">Allstar Network</button>
   <button type="button" data-tab-target="sounds">Sounds &amp; Tones</button>
+  <button type="button" data-tab-target="scheduler">Scheduler</button>
 </div>
 
 <div data-tab-panel="setup">
@@ -516,6 +517,95 @@
   {{else}}
   <p class="hint">No text-to-speech voices downloaded yet. Download one into <code>/etc/asl3-gui/piper-voices/</code> (both the <code>.onnx</code> file and its matching <code>.onnx.json</code>) from <a href="https://huggingface.co/rhasspy/piper-voices">huggingface.co/rhasspy/piper-voices</a>, then reload this page.</p>
   {{end}}
+</div>
+</div>
+
+<div data-tab-panel="scheduler">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Scheduled sound playback</h2>
+    {{template "help" "Automatically play a sound file at specific days/times. Runs from this app itself, not Asterisk's own scheduler (app_rpt has no native way to schedule arbitrary sound playback) — so this only fires while asl3-gui is running."}}
+  </div>
+  {{if .SoundSchedules}}
+  <table>
+    <thead><tr><th>File</th><th>Reach</th><th>Schedule</th><th></th></tr></thead>
+    <tbody>
+      {{range .SoundSchedules}}
+      <tr>
+        <td>{{.File}}</td>
+        <td>{{if eq .Reach "network"}}Local + linked nodes{{else}}Local only{{end}}</td>
+        <td>{{.Minute}} {{.Hour}} {{.DayOfMonth}} {{.Month}} {{if .DaysOfWeek}}{{range $i, $d := .DaysOfWeek}}{{if $i}},{{end}}{{$d}}{{end}}{{else}}*{{end}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/schedule/sounds/{{.ID}}/delete" style="display:inline" data-confirm="Delete this scheduled sound?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No scheduled sound playback yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.View.Node}}/schedule/sounds" style="margin-top:1rem">
+    <div class="field">
+      <div class="label-row">
+        <label for="sound_schedule_file">Sound file</label>
+        {{template "help" "Pick from your uploaded files or app_rpt's built-in library — see the Sounds & Tones tab to add more."}}
+      </div>
+      <select id="sound_schedule_file" name="sound_file" required>
+        <option value="">Choose a sound file</option>
+        {{range .SoundFiles}}<option value="{{.Ref}}">{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Reach</label>
+        {{template "help" "\"Local only\" plays over this node's own transmitter. \"Local + linked nodes\" also tries to reach anyone currently connected — on some setups (simplex/link-adapter nodes) this falls back to local-only automatically."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="radio" name="reach" value="local" checked> Local only</label>
+        <label><input type="radio" name="reach" value="network"> Local + linked nodes</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_minute">Minute</label>
+        <input type="text" id="sound_schedule_minute" name="minute" value="*" placeholder="* or 0-59" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_hour">Hour</label>
+        <input type="text" id="sound_schedule_hour" name="hour" value="*" placeholder="* or 0-23" required>
+      </div>
+      <div class="field" style="min-width:110px">
+        <label for="sound_schedule_dom">Day of month</label>
+        <input type="text" id="sound_schedule_dom" name="dom" value="*" placeholder="* or 1-31" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="sound_schedule_month">Month</label>
+        <input type="text" id="sound_schedule_month" name="month" value="*" placeholder="* or 1-12" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Days of week</label>
+        {{template "help" "Leave all unchecked for every day."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="checkbox" name="weekday" value="0"> Sun</label>
+        <label><input type="checkbox" name="weekday" value="1"> Mon</label>
+        <label><input type="checkbox" name="weekday" value="2"> Tue</label>
+        <label><input type="checkbox" name="weekday" value="3"> Wed</label>
+        <label><input type="checkbox" name="weekday" value="4"> Thu</label>
+        <label><input type="checkbox" name="weekday" value="5"> Fri</label>
+        <label><input type="checkbox" name="weekday" value="6"> Sat</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add scheduled sound</button>
+    </div>
+  </form>
 </div>
 </div>
 {{end}}

@@ -50,6 +50,12 @@ type Server struct {
 	ttsTool      string
 	ttsVoicesDir string
 
+	// soundSchedule holds the operator's scheduled sound-playback
+	// entries -- see internal/soundschedule's package doc.
+	// StartSoundSchedulePoller fires them; the Scheduler tab manages
+	// them.
+	soundSchedule *soundschedule.Store
+
 	// wifiManager owns wlan0's hotspot-fallback state machine -- see
 	// internal/wifi's package doc. Always non-nil (constructed in New);
 	// StartWiFiWatchdog swaps in the real detected backend and starts the
@@ -103,6 +109,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		sounds:         soundsStore,
 		ttsTool:        ttsTool,
 		ttsVoicesDir:   ttsVoicesDir,
+		soundSchedule:  soundScheduleStore,
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
@@ -188,6 +195,8 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/tts/preview", s.requireAuth(s.handleNodeSoundTTSPreview))
 	s.mux.HandleFunc("GET /nodes/{node}/sounds/{name}/audio", s.requireAuth(s.handleNodeSoundAudio))
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/{name}/delete", s.requireAuth(s.handleNodeSoundDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds", s.requireAuth(s.handleNodeSoundScheduleSave))
+	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds/{id}/delete", s.requireAuth(s.handleNodeSoundScheduleDelete))
 
 	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
@@ -428,6 +437,10 @@ type nodeEditData struct {
 	StationIDMode  string
 	StationIDText  string
 	StationIDValue string
+
+	// Scheduler tab: scheduled sound-playback entries -- see
+	// populateNodeSoundSchedule.
+	SoundSchedules []soundschedule.Entry
 }
 
 func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
@@ -455,6 +468,7 @@ func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error)
 	}
 	s.populateNodeSounds(&data)
 	s.populateNodeTelemetry(&data)
+	s.populateNodeSoundSchedule(&data)
 	return data, nil
 }
 

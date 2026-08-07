@@ -4,18 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 
 	"hamvoipconfiggui-asl3/internal/soundschedule"
 )
-
-// timeFieldRe matches app_rpt's own schedule-field syntax: a single
-// non-negative integer, or "*" -- never a range, list, or step value. A
-// small deliberate copy of the original HamVoIP app's
-// internal/automation.TimeFieldRe; that package (app_rpt-native DTMF
-// connect/disconnect scheduling) hasn't been ported to ASL3, and one
-// regex isn't worth pulling in for.
-var timeFieldRe = regexp.MustCompile(`^\*$|^[0-9]+$`)
 
 type soundScheduleListParams struct {
 	Node string `json:"node"`
@@ -58,7 +49,7 @@ func (a *Agent) validateSoundScheduleEntry(e soundschedule.Entry) error {
 		return fmt.Errorf("%q is not a known sound file", e.File)
 	}
 	for _, v := range []string{e.Minute, e.Hour, e.DayOfMonth, e.Month} {
-		if !timeFieldRe.MatchString(v) {
+		if !soundschedule.TimeFieldRe.MatchString(v) {
 			return fmt.Errorf("minute/hour/day-of-month/month must each be a single number or *")
 		}
 	}

@@ -18,10 +18,19 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
 )
+
+// TimeFieldRe matches this package's own schedule-field syntax (see
+// Entry's doc comment): a single non-negative integer, or "*" -- never
+// a range, list, or step value. Shared by every caller that validates
+// an Entry before it's saved (internal/server's local handler,
+// internal/cloudagent's relayed one) so both hold submitted values to
+// the same bar.
+var TimeFieldRe = regexp.MustCompile(`^\*$|^[0-9]+$`)
 
 // Reach values for Entry.Reach — see internal/system's RptLocalPlay vs
 // RptPlayback doc comments for what each actually does.
