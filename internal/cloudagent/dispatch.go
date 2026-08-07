@@ -34,12 +34,11 @@ type actionFunc func(ctx context.Context, params json.RawMessage) (any, error)
 //     deleteRadioDevice -- same reason; already covered by
 //     config.loadNode/config.updateRadioSettings here
 //   - schedule.* (DTMF-triggered connect/disconnect scheduling) --
-//     needs internal/automation, not yet ported
-//   - wxTone.* (alert-driven courtesy-tone swap) -- needs
-//     internal/wxtone, not yet ported
-//   - rawconfig.* -- deferred alongside the local raw-config-editor
-//     page, which needs new asteriskconf.File primitives worth building
-//     carefully rather than rushed in here
+//     internal/automation is ported and wired into the local UI (see
+//     internal/server/automation.go), but not relayed here
+//   - wxTone.* (alert-driven courtesy-tone swap) -- internal/wxtone is
+//     ported and wired into the local UI (see internal/server/wxtone.go),
+//     but not relayed here
 func (a *Agent) actions() map[string]actionFunc {
 	return map[string]actionFunc{
 		"system.status":          a.actionSystemStatus,
@@ -81,6 +80,12 @@ func (a *Agent) actions() map[string]actionFunc {
 		"sounds.upload":  a.actionSoundsUpload,
 		"sounds.delete":  a.actionSoundsDelete,
 		"sounds.preview": a.actionSoundsPreview,
+
+		"rawconfig.listFiles":  a.actionRawConfigListFiles,
+		"rawconfig.getFile":    a.actionRawConfigGetFile,
+		"rawconfig.setKey":     a.actionRawConfigSetKey,
+		"rawconfig.addKey":     a.actionRawConfigAddKey,
+		"rawconfig.addSection": a.actionRawConfigAddSection,
 	}
 }
 
