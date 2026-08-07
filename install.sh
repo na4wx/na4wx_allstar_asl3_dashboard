@@ -155,15 +155,19 @@ PIPER_RELEASE_VERSION="2023.11.14-2"
 PIPER_INSTALL_DIR="/usr/local/lib/piper"
 PIPER_VOICES_DIR="/etc/asl3-gui/piper-voices"
 
-# Default voices downloaded below, one male/one female so an operator has
-# an actual choice out of the box rather than just whatever shipped
-# first -- "name:huggingface-path" pairs, path relative to
-# rhasspy/piper-voices' own repo root, without the .onnx/.onnx.json
-# extension (confirmed against the real repo layout, e.g.
-# en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx).
+# Default voices downloaded below so an operator has an actual choice
+# out of the box rather than just whatever shipped first -- "name:
+# huggingface-path" pairs, path relative to rhasspy/piper-voices' own
+# repo root, without the .onnx/.onnx.json extension (confirmed against
+# the real repo layout for each of these before adding it here). The
+# defaultTTSVoiceName constant in internal/server/sounds.go picks
+# en_US-hfc_female-medium as the pre-selected option in the "Create
+# from text" voice dropdown -- update both places together if the
+# preferred default ever changes.
 PIPER_DEFAULT_VOICES=(
 	"en_US-lessac-medium:en/en_US/lessac/medium/en_US-lessac-medium"
 	"en_US-hfc_female-medium:en/en_US/hfc_female/medium/en_US-hfc_female-medium"
+	"en_US-hfc_male-medium:en/en_US/hfc_male/medium/en_US-hfc_male-medium"
 )
 
 PIPER_ARCH=""

@@ -375,11 +375,12 @@ type nodeEditData struct {
 	// Sounds tab: shared (node-agnostic) custom+stock sound library plus
 	// whichever text-to-speech backend is available -- see
 	// populateNodeSounds.
-	SoundFiles []sounds.File
-	TTSVoices  []tts.Voice
-	TTSEngine  string
-	TTSNotice  string
-	TTSError   string
+	SoundFiles      []sounds.File
+	TTSVoices       []tts.Voice
+	TTSEngine       string
+	TTSNotice       string
+	TTSError        string
+	TTSDefaultVoice string
 
 	// Sounds tab: courtesy-tone/telemetry editor -- see
 	// populateNodeTelemetry.

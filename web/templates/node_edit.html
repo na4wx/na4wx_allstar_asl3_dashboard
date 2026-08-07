@@ -496,7 +496,7 @@
       <div class="field">
         <label for="tts_voice">Voice</label>
         <select id="tts_voice" name="tts_voice" required>
-          {{range .TTSVoices}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+          {{range .TTSVoices}}<option value="{{.Name}}" {{if eq .Name $.TTSDefaultVoice}}selected{{end}}>{{.Name}}</option>{{end}}
         </select>
       </div>
     </div>

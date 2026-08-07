@@ -23,6 +23,13 @@ import (
 // meaningfully fill the disk.
 const soundUploadMaxBytes = 20 << 20
 
+// defaultTTSVoiceName is pre-selected in the "Create from text" voice
+// dropdown when it's among the voices actually installed (see
+// install.sh's own PIPER_DEFAULT_VOICES, which downloads this one among
+// others) -- falls back to the browser's own "first option" default if
+// it isn't installed, rather than erroring.
+const defaultTTSVoiceName = "en_US-hfc_female-medium"
+
 const (
 	espeakFallbackEngine = "espeak"
 	espeakNGTool         = "espeak-ng"
@@ -143,6 +150,7 @@ func (s *Server) populateNodeSounds(data *nodeEditData) {
 	data.TTSVoices = voices
 	data.TTSNotice = note
 	data.TTSError = errMsg
+	data.TTSDefaultVoice = defaultTTSVoiceName
 }
 
 // handleNodeSoundUpload handles an uploaded audio file (typically a
