@@ -95,6 +95,27 @@ func SetNthValueInSection(path, sectionName string, n int, newValue string) (ok 
 	return ok, err
 }
 
+// SectionExists reports whether path's own top-level section list (no
+// #include/#tryinclude resolution, matching every other write.go
+// primitive's "operate on the physical file directly" discipline)
+// contains a section named name. Used by callers that need to create a
+// section on first use (e.g. a node's own per-node scheduler section)
+// before writing into it, since SetValues itself deliberately refuses
+// to create a section that doesn't exist yet.
+func SectionExists(path, name string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Errorf("asteriskconf: %w", err)
+	}
+	defer f.Close()
+	parsed, _, err := Parse(f)
+	if err != nil {
+		return false, fmt.Errorf("asteriskconf: %w", err)
+	}
+	_, ok := parsed.Section(name)
+	return ok, nil
+}
+
 // SetRepeatingValue finds, within the named section, the "key => value" (or
 // "key = value") line whose value starts with valuePrefix, and replaces
 // its value with newValue -- preserving the line's original operator and

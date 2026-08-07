@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/auth"
+	"hamvoipconfiggui-asl3/internal/automation"
 	"hamvoipconfiggui-asl3/internal/cloudagent"
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/nodedb"
@@ -229,6 +230,13 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/{name}/delete", s.requireAuth(s.handleNodeSoundDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds", s.requireAuth(s.handleNodeSoundScheduleSave))
 	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds/{id}/delete", s.requireAuth(s.handleNodeSoundScheduleDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/schedule/connections", s.requireAuth(s.handleNodeAutomationConnectionSave))
+	s.mux.HandleFunc("POST /nodes/{node}/schedule/connections/{macronum}/delete", s.requireAuth(s.handleNodeAutomationConnectionDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/dtmf", s.requireAuth(s.handleNodeSendDTMF))
+	s.mux.HandleFunc("POST /nodes/{node}/macros", s.requireAuth(s.handleNodeMacroSave))
+	s.mux.HandleFunc("POST /nodes/{node}/macros/{digits}/delete", s.requireAuth(s.handleNodeMacroDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/macrodefs", s.requireAuth(s.handleNodeMacroDefSave))
+	s.mux.HandleFunc("POST /nodes/{node}/macrodefs/{digits}/delete", s.requireAuth(s.handleNodeMacroDefDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/toggle", s.requireAuth(s.handleNodeSkywarnToggle))
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/register", s.requireAuth(s.handleNodeSkywarnRegister))
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/counties", s.requireAuth(s.handleNodeSkywarnAddCounty))
@@ -479,6 +487,18 @@ type nodeEditData struct {
 	SkywarnInstalled      bool
 	SkywarnStatus         skywarnplus.Status
 	SkywarnNodeRegistered bool
+
+	// Commands tab -- see populateNodeCommands.
+	FunctionsSect string
+	Macros        []config.FunctionMacro
+	MacroSect     string
+	MacroDefs     []config.FunctionMacro
+	LinkStatus    string
+	LinkStatusErr string
+
+	// Scheduler tab, connections half -- see populateNodeAutomation.
+	SchedulerSect         string
+	AutomationConnections []automation.Row
 }
 
 func (s *Server) loadNodeEditData(ctx context.Context, num string, pd pageData) (nodeEditData, error) {
@@ -508,6 +528,8 @@ func (s *Server) loadNodeEditData(ctx context.Context, num string, pd pageData) 
 	s.populateNodeTelemetry(&data)
 	s.populateNodeSoundSchedule(&data)
 	s.populateNodeSkywarn(ctx, &data)
+	s.populateNodeCommands(ctx, &data)
+	s.populateNodeAutomation(&data)
 	return data, nil
 }
 

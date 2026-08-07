@@ -115,6 +115,18 @@ type NodeView struct {
 	// apply the exact same "|i" convention this field's own inline
 	// comment documents.
 	IDRecording string
+
+	// Functions/Macro/Scheduler are the rpt.conf section names this
+	// node's DTMF function map, saved macros, and native connect/
+	// disconnect scheduler resolve from -- same "shared by default,
+	// overridable per node" pattern as Telemetry above (confirmed on a
+	// real node: node-main sets "functions = functions" and
+	// "scheduler = schedule" directly; there's no explicit "macro ="
+	// field at all, so app_rpt's own default of a bare "macro" section
+	// applies whenever this is empty).
+	Functions string
+	Macro     string
+	Scheduler string
 }
 
 // ListNodes returns the node numbers of every locally-configured node in
@@ -194,6 +206,18 @@ func (s *Store) LoadNode(node string) (*NodeView, error) {
 	view.RemoteCT, _ = r.Value("remotect")
 	view.LinkUnkeyCT, _ = r.Value("linkunkeyct")
 	view.IDRecording, _ = r.Value("idrecording")
+	view.Functions, _ = r.Value("functions")
+	if view.Functions == "" {
+		view.Functions = "functions"
+	}
+	view.Macro, _ = r.Value("macro")
+	if view.Macro == "" {
+		view.Macro = "macro"
+	}
+	view.Scheduler, _ = r.Value("scheduler")
+	if view.Scheduler == "" {
+		view.Scheduler = "schedule"
+	}
 
 	switch {
 	case strings.HasPrefix(view.RxChannel, "SimpleUSB/"):

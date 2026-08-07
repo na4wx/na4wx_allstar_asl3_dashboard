@@ -7,6 +7,7 @@
   <button type="button" data-tab-target="radio">Radio</button>
   <button type="button" data-tab-target="network">Allstar Network</button>
   <button type="button" data-tab-target="sounds">Sounds &amp; Tones</button>
+  <button type="button" data-tab-target="commands">Commands</button>
   <button type="button" data-tab-target="scheduler">Scheduler</button>
   <button type="button" data-tab-target="skywarnplus">SkywarnPlus</button>
 </div>
@@ -521,7 +522,279 @@
 </div>
 </div>
 
+<div data-tab-panel="commands">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Who's connected right now</h2>
+    {{template "help" "A live snapshot of other stations currently linked to this node."}}
+  </div>
+  {{if .LinkStatusErr}}
+  <p class="hint">Could not read live status: {{.LinkStatusErr}}</p>
+  {{else}}
+  <pre style="font-size:0.8rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem; white-space:pre-wrap; margin-top:0.75rem;">{{.LinkStatus}}</pre>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Connect or disconnect a node</h2>
+    {{template "help" "Fill in a node number and pick an action — this fills in the touch-tone sequence below, which you then review and send. Nothing happens until you click Send."}}
+  </div>
+  <p class="section-intro">These use AllStarLink's standard touch-tone codes (*3 connect, *2 connect for listening only, *1 disconnect). If the command list below has been customized, use the matching digits from that table instead.</p>
+  <div class="row">
+    <div class="field">
+      <label for="quick_target">Other node's number</label>
+      <input type="text" id="quick_target" data-target-node placeholder="2000">
+    </div>
+  </div>
+  <div class="actions" style="margin-top:0">
+    <button type="button" class="primary" data-fill-digits="*3">Connect (stay connected)</button>
+    <button type="button" data-fill-digits="*2">Connect (listen only)</button>
+    <button type="button" data-fill-digits="*1">Disconnect</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Send a touch-tone command now</h2>
+    {{template "help" "Sends the sequence below exactly as if it were dialed on the radio itself. Using the quick actions above fills this in for you, or you can type any sequence from the command list below."}}
+  </div>
+  <form method="post" action="/nodes/{{.View.Node}}/dtmf" data-confirm="Send this command to node {{.View.Node}} now? This can connect or disconnect live links.">
+    <div class="row">
+      <div class="field">
+        <label for="dtmf_digits">Touch-tone sequence</label>
+        <input type="text" id="dtmf_digits" name="digits" data-dtmf-field placeholder="*32000" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Send</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Command list ({{.FunctionsSect}})</h2>
+    {{template "help" "Every touch-tone command this node recognizes when dialed from a radio. The same list is used by the quick actions above."}}
+  </div>
+  {{if .Macros}}
+  <table>
+    <thead><tr><th>Digits</th><th>What it does</th><th></th></tr></thead>
+    <tbody>
+      {{range .Macros}}
+      <tr>
+        <td>{{.Digits}}</td>
+        <td>{{.Command}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/macros/{{.Digits}}/delete" style="display:inline" data-confirm="Delete command {{.Digits}}?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No commands defined yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.View.Node}}/macros" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="macro_digits">Digits to dial</label>
+          {{template "help" "The touch-tone sequence someone dials on their radio to trigger this command."}}
+        </div>
+        <input type="text" id="macro_digits" name="digits" placeholder="1" required>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="macro_command">Command</label>
+          {{template "help" "The underlying app_rpt command that runs — for example ilink,3 connects permanently to whatever node number is dialed next."}}
+        </div>
+        <input type="text" id="macro_command" name="command" list="function_reference" placeholder="ilink,3" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add / update command</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Saved macros ({{.MacroSect}})</h2>
+    {{template "help" "A macro is a saved sequence of touch-tone commands that runs all at once from a single dial — for example, disconnecting one node and connecting another in one step. Triggered with the \"macro\" command in the Command list above (e.g. macro,1 runs the macro saved as \"1\" here)."}}
+  </div>
+  {{if .MacroDefs}}
+  <table>
+    <thead><tr><th>Macro number</th><th>Sequence it runs</th><th></th></tr></thead>
+    <tbody>
+      {{range .MacroDefs}}
+      <tr>
+        <td>{{.Digits}}</td>
+        <td>{{.Command}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/macrodefs/{{.Digits}}/delete" style="display:inline" data-confirm="Delete macro {{.Digits}}?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No macros defined yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.View.Node}}/macrodefs" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="macrodef_digits">Macro number</label>
+          {{template "help" "The key used to run this macro — for example, saving this as 1 means the command macro,1 (in the Command list above) will run it."}}
+        </div>
+        <input type="text" id="macrodef_digits" name="digits" placeholder="1" required>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="macrodef_sequence">Sequence to run</label>
+          {{template "help" "The touch-tone sequence this macro plays back, exactly as if you'd dialed each digit yourself — can chain multiple commands together, e.g. *12000*32001 disconnects node 2000 then connects node 2001."}}
+        </div>
+        <input type="text" id="macrodef_sequence" name="sequence" placeholder="*12000*32001" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add / update macro</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Function reference</h2>
+    {{template "help" "The building blocks you can type into the Command field above. Click that field to pick from this list directly."}}
+  </div>
+  <p class="section-intro">This covers the commands most nodes use. app_rpt supports further advanced functions (playing sound files, reading hardware sensors, running saved macros, and more) — check the AllStarLink/app_rpt documentation for anything not listed here, and for the full set of "control operator" (cop) sub-commands, which vary by what your node needs.</p>
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>ilink,1</td><td>Disconnect the most recently connected node</td></tr>
+      <tr><td>ilink,2</td><td>Connect to a node, listen-only — you can hear them, they can't hear you</td></tr>
+      <tr><td>ilink,3</td><td>Connect to a node, both directions — stays connected until manually disconnected</td></tr>
+      <tr><td>ilink,5</td><td>Announce which nodes are currently connected</td></tr>
+      <tr><td>ilink,6</td><td>Disconnect every connected node at once</td></tr>
+      <tr><td>ilink,8</td><td>Connect to a node, listen-only, temporary — drops automatically when the repeater goes idle</td></tr>
+      <tr><td>status,1</td><td>Announce this node's own number and status</td></tr>
+      <tr><td>autopatchup</td><td>Start an autopatch call (dial out through a connected phone line/gateway, if one is set up)</td></tr>
+      <tr><td>autopatchdn</td><td>End the current autopatch call</td></tr>
+      <tr><td>cop,&lt;n&gt;</td><td>"Control operator" — local system actions like reloading configuration. Which number does what depends on your setup; see the documentation.</td></tr>
+      <tr><td>macro,&lt;n&gt;</td><td>Runs a saved sequence of commands in one dial — macros are defined elsewhere in rpt.conf</td></tr>
+    </tbody>
+  </table>
+</div>
+</div>
+
+<datalist id="function_reference">
+  <option value="ilink,1">ilink,1 — disconnect the last-connected node</option>
+  <option value="ilink,2">ilink,2 — connect, listen-only</option>
+  <option value="ilink,3">ilink,3 — connect, both directions, stays connected</option>
+  <option value="ilink,5">ilink,5 — announce connected nodes</option>
+  <option value="ilink,6">ilink,6 — disconnect everything</option>
+  <option value="ilink,8">ilink,8 — connect, listen-only, temporary</option>
+  <option value="status,1">status,1 — announce this node's status</option>
+  <option value="autopatchup">autopatchup — start an autopatch call</option>
+  <option value="autopatchdn">autopatchdn — end the autopatch call</option>
+</datalist>
+
 <div data-tab-panel="scheduler">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Scheduled connections ({{.SchedulerSect}})</h2>
+    {{template "help" "Automatically connect or disconnect this node from another at specific days/times, using Asterisk's own scheduler directly — this keeps working even if this page isn't open, and across a reboot."}}
+  </div>
+  {{if .AutomationConnections}}
+  <table>
+    <thead><tr><th>Action</th><th>Schedule (min hour dom month dow)</th><th></th></tr></thead>
+    <tbody>
+      {{range .AutomationConnections}}
+      <tr>
+        <td>{{if .Recognized}}{{.Label}}{{else}}<span class="hint">{{.Label}}</span>{{end}}</td>
+        <td>{{.TimeSpec}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/schedule/connections/{{.MacroNum}}/delete" style="display:inline" data-confirm="Delete this scheduled action?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No scheduled connections yet.</p>
+  {{end}}
+
+  <form method="post" action="/nodes/{{.View.Node}}/schedule/connections" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="automation_action">Action</label>
+          {{template "help" "What to do when the schedule below matches."}}
+        </div>
+        <select id="automation_action" name="action" required>
+          <option value="connect_stay">Connect (stay connected)</option>
+          <option value="connect_listen">Connect (listen only)</option>
+          <option value="disconnect_one">Disconnect a specific node</option>
+          <option value="disconnect_all">Disconnect all</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="automation_target">Node number</label>
+          {{template "help" "Which node to connect to or disconnect. Not needed for \"Disconnect all\"."}}
+        </div>
+        <input type="text" id="automation_target" name="target" placeholder="2000">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="min-width:90px">
+        <label for="automation_minute">Minute</label>
+        <input type="text" id="automation_minute" name="minute" value="*" placeholder="* or 0-59" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="automation_hour">Hour</label>
+        <input type="text" id="automation_hour" name="hour" value="*" placeholder="* or 0-23" required>
+      </div>
+      <div class="field" style="min-width:110px">
+        <label for="automation_dom">Day of month</label>
+        <input type="text" id="automation_dom" name="dom" value="*" placeholder="* or 1-31" required>
+      </div>
+      <div class="field" style="min-width:90px">
+        <label for="automation_month">Month</label>
+        <input type="text" id="automation_month" name="month" value="*" placeholder="* or 1-12" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Days of week</label>
+        {{template "help" "Leave all unchecked for every day. Check several to schedule the same action on each — app_rpt's own scheduler only allows one day per entry, so this creates one entry per day picked, each then listed and deletable on its own."}}
+      </div>
+      <div class="row" style="margin:0">
+        <label><input type="checkbox" name="weekday" value="0"> Sun</label>
+        <label><input type="checkbox" name="weekday" value="1"> Mon</label>
+        <label><input type="checkbox" name="weekday" value="2"> Tue</label>
+        <label><input type="checkbox" name="weekday" value="3"> Wed</label>
+        <label><input type="checkbox" name="weekday" value="4"> Thu</label>
+        <label><input type="checkbox" name="weekday" value="5"> Fri</label>
+        <label><input type="checkbox" name="weekday" value="6"> Sat</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add scheduled connection</button>
+    </div>
+  </form>
+</div>
+
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Scheduled sound playback</h2>
