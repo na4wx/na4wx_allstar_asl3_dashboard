@@ -192,18 +192,22 @@ func (s *Server) gatherNodeStatuses(r *http.Request) ([]*config.NodeView, system
 	return nodes, status, quick, nil
 }
 
-// handleNodeLink sends a quick link ("*3<target>") or unlink
-// ("*1<target>") touch-tone command from Home's quick actions -- the
-// same underlying mechanism as the node page's touch-tone sender
-// (asterisk -rx "rpt fun <node> <digits>"), scoped to just these two
-// standard AllStarLink codes rather than an arbitrary typed sequence,
-// since this is meant to be a one-click shortcut.
+// handleNodeLink sends a quick link ("*3<target>"), listen-only link
+// ("*2<target>"), or unlink ("*1<target>") touch-tone command from
+// Home's quick actions -- the same underlying mechanism as the node
+// page's touch-tone sender (asterisk -rx "rpt fun <node> <digits>"),
+// scoped to these three standard AllStarLink codes (matching
+// internal/automation's own connect_stay/connect_listen/disconnect_one
+// actions) rather than an arbitrary typed sequence, since this is meant
+// to be a one-click shortcut.
 //
-// It answers in JSON when the caller asks (the home page's fetch does),
-// so the command can be sent without a full-page reload -- the live SSE
-// stream then reflects the connection appearing or dropping. A plain
-// form POST (no JS) still works and re-renders Home with a flash, so the
-// action degrades gracefully.
+// It answers in JSON when the caller asks, so a future non-WS caller
+// (a script, or a future cloud-relay action) can get a structured result
+// without re-rendering the whole page. Normal browser use goes through
+// AppSocket (see web/static/js/app.js), which replays the form over the
+// WebSocket connection and swaps the resulting flash in place -- but a
+// plain form POST (no JS) still works exactly the same via the render
+// branch below, so the action degrades gracefully either way.
 func (s *Server) handleNodeLink(w http.ResponseWriter, r *http.Request) {
 	number := r.PathValue("node")
 	wantsJSON := strings.Contains(r.Header.Get("Accept"), "application/json")
@@ -230,6 +234,8 @@ func (s *Server) handleNodeLink(w http.ResponseWriter, r *http.Request) {
 	switch r.FormValue("action") {
 	case "link":
 		digits = "*3" + target
+	case "listen":
+		digits = "*2" + target
 	case "unlink":
 		digits = "*1" + target
 	default:

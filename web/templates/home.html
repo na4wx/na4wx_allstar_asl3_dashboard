@@ -51,7 +51,7 @@
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Connect node {{.Number}} to another node</h2>
-    {{template "help" "Sends the standard AllStarLink touch-tone command to link (*3) or unlink (*1) — the same thing you'd key in over the air, without needing a radio in your hand. The result shows up in the card above once the connection changes, and in more detail on the Stats page."}}
+    {{template "help" "Sends the standard AllStarLink touch-tone command to link (*3), link listen-only (*2), or unlink (*1) — the same thing you'd key in over the air, without needing a radio in your hand. Listen-only connects one-way: you'll hear the other node, but your own audio isn't sent to it. The result shows up in the card above once the connection changes, and in more detail on the Stats page."}}
   </div>
   <form method="post" action="/nodes/{{.Number}}/link" data-confirm="Send this link/unlink command to node {{.Number}} now?">
     <div class="row">
@@ -63,6 +63,7 @@
     </div>
     <div class="actions">
       <button type="submit" name="action" value="link" class="primary">Link</button>
+      <button type="submit" name="action" value="listen">Link (Listen Only)</button>
       <button type="submit" name="action" value="unlink">Unlink</button>
     </div>
   </form>
