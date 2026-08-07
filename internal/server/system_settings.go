@@ -1,14 +1,15 @@
-// System page: hostname, Asterisk restart/reboot, and WiFi (scan/connect,
+// System page: hostname, Asterisk restart/reboot, WiFi (scan/connect,
 // plus the automatic hotspot-fallback watchdog -- see internal/wifi's
-// package doc).
+// package doc), and Cloud Sync (see cloudsettings.go and
+// internal/cloudagent's package doc).
 //
 // Deliberately NOT ported from the HamVoIP app's own system_settings.go:
 // static-IP editing (HamVoIP writes dhcpcd.conf directly; ASL3 uses
 // NetworkManager/netplan instead, and ASL3's own Cockpit already
-// provides a web UI for that on port 9090 -- see the project plan), the
-// flat RadioDevices/EmptyRadioFiles model (doesn't map to ASL3's
+// provides a web UI for that on port 9090 -- see the project plan), and
+// the flat RadioDevices/EmptyRadioFiles model (doesn't map to ASL3's
 // per-node tune stanzas in usbradio.conf/simpleusb.conf -- see
-// internal/config), and Cloud Sync (deferred; see internal/cloudagent).
+// internal/config).
 //
 // SA818/DRA818 radio-module programming lives on the node edit page
 // instead (see sa818.go's handleNodeSA818Apply) -- it's this node's own
@@ -39,6 +40,14 @@ type systemPageData struct {
 	WiFiNetworks      []wifi.Network
 	WiFiHotspotSSID   string
 	WiFiKnownNetworks []string
+
+	// Cloud Sync -- see populateSystemCloud.
+	CloudURL                string
+	CloudAPIKey             string
+	CloudEnabled            bool
+	CloudAllowRemoteReboot  bool
+	CloudAllowRawConfigEdit bool
+	CloudLastConnected      string
 }
 
 func (s *Server) handleSystemPage(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +77,7 @@ func (s *Server) renderSystemPageWithNetworks(w http.ResponseWriter, r *http.Req
 	if networks != nil {
 		data.WiFiNetworks = networks
 	}
+	s.populateSystemCloud(&data)
 
 	s.render(w, "system.html", data)
 }

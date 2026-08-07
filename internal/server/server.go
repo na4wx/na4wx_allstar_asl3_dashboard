@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/auth"
+	"hamvoipconfiggui-asl3/internal/cloudagent"
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/sa818"
 	"hamvoipconfiggui-asl3/internal/sounds"
+	"hamvoipconfiggui-asl3/internal/soundschedule"
 	"hamvoipconfiggui-asl3/internal/tts"
 	"hamvoipconfiggui-asl3/internal/wifi"
 )
@@ -55,6 +57,25 @@ type Server struct {
 	// still renders the System page fine, just with WiFi management
 	// reporting "unavailable".
 	wifiManager *wifi.Manager
+
+	// cloudAgent is this node's optional, off-by-default connection to
+	// the public cloud platform -- see internal/cloudagent's package
+	// doc. Always non-nil (constructed in New); whether it actually
+	// dials out is controlled by cloudAgent.Settings()'s own Enabled
+	// flag, checked by (*cloudagent.Agent).Run itself, not by anything
+	// here. cloudURLDefault is shown read-only on the Cloud Sync
+	// settings card -- see cloudagent.New's own doc comment for why the
+	// cloud address itself is never operator-editable.
+	cloudAgent      *cloudagent.Agent
+	cloudURLDefault string
+}
+
+// StartCloudAgent begins this node's optional, off-by-default outbound
+// connection to the public cloud platform. Safe to call even if Cloud
+// Sync has never been configured -- Agent.Run just polls its own
+// settings and stays idle until an operator enables it with an API key.
+func (s *Server) StartCloudAgent(ctx context.Context) {
+	go s.cloudAgent.Run(ctx)
 }
 
 // asteriskDir overrides where Asterisk's own config files
@@ -67,18 +88,28 @@ type Server struct {
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
 // wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
 // wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+	cfg := &config.Store{Dir: asteriskDir}
+	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
+	soundScheduleStore := soundschedule.New(soundSchedulePath)
+
 	s := &Server{
 		auth:           authMgr,
-		cfg:            &config.Store{Dir: asteriskDir},
+		cfg:            cfg,
 		mux:            http.NewServeMux(),
 		asteriskBin:    asteriskBin,
 		sa818Port:      sa818Port,
 		sa818StatePath: sa818StatePath,
-		sounds:         sounds.New(soundsCustomDir, soundsStockDir, soxTool),
+		sounds:         soundsStore,
 		ttsTool:        ttsTool,
 		ttsVoicesDir:   ttsVoicesDir,
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
+		cloudAgent: cloudagent.New(
+			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
+			soundsStore, soundScheduleStore, skywarnDir,
+			sa818Port, sa818StatePath, cloudAuditLogPath,
+		),
+		cloudURLDefault: cloudURLDefault,
 	}
 
 	tmpl, err := s.parseTemplates(templatesFS)
@@ -165,6 +196,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /system/reboot", s.requireAuth(s.handleSystemReboot))
 	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
 	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
+	s.mux.HandleFunc("POST /system/cloud", s.requireAuth(s.handleSystemCloudSave))
 }
 
 // pageData is the common template context. Handlers embed it and add

@@ -137,6 +137,63 @@
   </div>
 </div>
 
+<h2 class="section-heading">Cloud Sync</h2>
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Cloud Sync</h2>
+    {{template "help" "Optional: connect this node to the public cloud platform so it can be managed remotely, e.g. from another location. This node always dials out to the cloud URL below — it never opens any port for the cloud to reach in, so nothing needs forwarding on your router. Off by default; nothing is sent anywhere until you enable it here with an API key generated on the cloud site."}}
+  </div>
+  {{if .CloudEnabled}}<p class="hint">Last connected: {{.CloudLastConnected}}</p>{{end}}
+  <form method="post" action="/system/cloud">
+    <div class="row">
+      <div class="field">
+        <label for="cloud_enabled">Cloud Sync</label>
+        <select id="cloud_enabled" name="cloud_enabled">
+          <option value="true" {{if .CloudEnabled}}selected{{end}}>On</option>
+          <option value="false" {{if not .CloudEnabled}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="cloud_url">Cloud URL</label>
+          {{template "help" "Fixed for this build of the app -- not editable here, so a mistyped or malicious URL can never redirect this node's cloud connection."}}
+        </div>
+        <input type="text" id="cloud_url" value="{{.CloudURL}}" disabled>
+      </div>
+      <div class="field">
+        <label for="cloud_api_key">API key</label>
+        <input type="password" id="cloud_api_key" name="cloud_api_key" value="{{.CloudAPIKey}}" placeholder="generated on the cloud site">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="cloud_allow_remote_reboot">Allow remote restart/reboot</label>
+          {{template "help" "Separate from Cloud Sync itself being on: lets the cloud site trigger an Asterisk restart or a full device reboot. Off by default even with Cloud Sync enabled — turn this on only if you actually want that available remotely."}}
+        </div>
+        <select id="cloud_allow_remote_reboot" name="cloud_allow_remote_reboot">
+          <option value="true" {{if .CloudAllowRemoteReboot}}selected{{end}}>On</option>
+          <option value="false" {{if not .CloudAllowRemoteReboot}}selected{{end}}>Off</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="cloud_allow_raw_config_edit">Allow remote raw config editing</label>
+          {{template "help" "Lets the cloud site edit this node's config files directly, the same way the Raw Config page here does. The most powerful and least guarded capability this app offers — leave this off unless you specifically need it."}}
+        </div>
+        <select id="cloud_allow_raw_config_edit" name="cloud_allow_raw_config_edit">
+          <option value="true" {{if .CloudAllowRawConfigEdit}}selected{{end}}>On</option>
+          <option value="false" {{if not .CloudAllowRawConfigEdit}}selected{{end}}>Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save Cloud Sync settings</button>
+    </div>
+  </form>
+</div>
+
+<h2 class="section-heading">Account</h2>
 <div class="card">
   <h2>Change your password</h2>
   <form method="post" action="/system/password">
