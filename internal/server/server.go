@@ -149,6 +149,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/registration", s.requireAuth(s.handleNodeRegistrationUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/sa818/apply", s.requireAuth(s.handleNodeSA818Apply))
+	s.mux.HandleFunc("POST /nodes/{node}/station-id", s.requireAuth(s.handleNodeStationIDUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/courtesy-tones", s.requireAuth(s.handleNodeCourtesyToneUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/telemetry", s.requireAuth(s.handleNodeTelemetryUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/upload", s.requireAuth(s.handleNodeSoundUpload))
@@ -385,6 +386,15 @@ type nodeEditData struct {
 	TelemetrySect string
 	TelemetryRows []telemetryRow
 	CTKeys        []string
+
+	// Sounds tab: station ID editor (rpt.conf's own "idrecording") --
+	// see populateNodeTelemetry. StationIDMode is "cw" or "sound";
+	// StationIDText is the CW text (only meaningful in "cw" mode);
+	// StationIDValue is the raw current value, for the sound picker to
+	// match against.
+	StationIDMode  string
+	StationIDText  string
+	StationIDValue string
 }
 
 func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {

@@ -194,6 +194,14 @@ func (s *Server) populateNodeTelemetry(data *nodeEditData) {
 		data.TelemetryRows = buildTelemetryRows(entries, view)
 		data.CTKeys = courtesyToneKeys(entries)
 	}
+
+	if text, ok := config.ParseCWIDText(view.IDRecording); ok {
+		data.StationIDMode = "cw"
+		data.StationIDText = text
+	} else {
+		data.StationIDMode = "sound"
+	}
+	data.StationIDValue = view.IDRecording
 }
 
 // handleNodeCourtesyToneUpdate saves which courtesy tone (ct1-ct8) plays
@@ -285,6 +293,50 @@ func (s *Server) handleNodeTelemetryUpdate(w http.ResponseWriter, r *http.Reques
 			s.renderNodeEditErrorReq(w, r, num, err.Error())
 			return
 		}
+	}
+	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
+}
+
+// handleNodeStationIDUpdate saves rpt.conf's "idrecording" -- either a
+// CW/Morse station ID (app_rpt's own "|i<text>" syntax, see
+// config.FormatCWID) or a sound file reference, decided by the id_mode
+// toggle submitted with the form (same explicit-toggle pattern as the
+// courtesy-tone/telemetry editor above, not inferred from the old
+// value).
+func (s *Server) handleNodeStationIDUpdate(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	if _, err := s.cfg.LoadNode(num); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+
+	var value string
+	switch r.FormValue("id_mode") {
+	case "cw":
+		text := strings.TrimSpace(r.FormValue("id_text"))
+		if text == "" {
+			s.renderNodeEditErrorReq(w, r, num, "Enter the callsign/text to send as CW")
+			return
+		}
+		value = config.FormatCWID(text)
+	case "sound":
+		value = strings.TrimSpace(r.FormValue("id_sound"))
+		if value == "" {
+			s.renderNodeEditErrorReq(w, r, num, "Choose a sound file for the station ID")
+			return
+		}
+	default:
+		s.renderNodeEditErrorReq(w, r, num, "Choose CW ID or Sound file")
+		return
+	}
+
+	if err := s.cfg.UpdateNodeSettings(num, map[string]string{"idrecording": value}); err != nil {
+		s.renderNodeEditErrorReq(w, r, num, err.Error())
+		return
 	}
 	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
 }

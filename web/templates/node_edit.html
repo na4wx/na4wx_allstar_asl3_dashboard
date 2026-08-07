@@ -244,6 +244,59 @@
 </div>
 
 <div data-tab-panel="sounds">
+<form method="post" action="/nodes/{{.View.Node}}/station-id">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Station ID (idrecording)</h2>
+      {{template "help" "How this node identifies itself. CW ID sends the text below as Morse code, using this node's [morse] stanza for speed/tone/volume. Sound file plays a recording instead — pick one from the library below, or upload/generate one first on this same tab."}}
+    </div>
+    <div class="tone-entry">
+      <div class="tone-entry-header">
+        <div class="tone-entry-title">
+          <strong>Station ID</strong>
+          <span class="tone-entry-key">idrecording</span>
+        </div>
+        <div class="segmented">
+          <label><input type="radio" name="id_mode" value="cw" data-type-toggle {{if eq .StationIDMode "cw"}}checked{{end}}> CW ID</label>
+          <label><input type="radio" name="id_mode" value="sound" data-type-toggle {{if eq .StationIDMode "sound"}}checked{{end}}> Sound file</label>
+        </div>
+      </div>
+
+      <div data-type-toggle-section="id_mode:cw" {{if ne .StationIDMode "cw"}}style="display:none"{{end}}>
+        <div class="field" style="margin-bottom:0">
+          <label for="id_text">Text to send as CW</label>
+          <input type="text" id="id_text" name="id_text" value="{{.StationIDText}}" placeholder="e.g. your callsign">
+        </div>
+      </div>
+
+      <div data-type-toggle-section="id_mode:sound" {{if ne .StationIDMode "sound"}}style="display:none"{{end}}>
+        <div class="tone-entry-fields">
+          <div class="field sound-field">
+            <label for="id_sound_select">Sound file</label>
+            {{$idVal := .StationIDValue}}
+            {{if eq .StationIDMode "sound"}}
+            {{$idFound := false}}
+            {{range $.SoundFiles}}{{if eq .Ref $idVal}}{{$idFound = true}}{{end}}{{end}}
+            <select id="id_sound_select" name="id_sound">
+              {{if not $idFound}}<option value="{{$idVal}}" selected>{{$idVal}} (current — not in library)</option>{{end}}
+              {{range $.SoundFiles}}<option value="{{.Ref}}" {{if eq .Ref $idVal}}selected{{end}}>{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+            </select>
+            {{else}}
+            <select id="id_sound_select" name="id_sound">
+              <option value="">Choose a sound file</option>
+              {{range $.SoundFiles}}<option value="{{.Ref}}">{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+            </select>
+            {{end}}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save station ID</button>
+    </div>
+  </div>
+</form>
+
 <form method="post" action="/nodes/{{.View.Node}}/courtesy-tones">
   <div class="card">
     <div class="label-row">

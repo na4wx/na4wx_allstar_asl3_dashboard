@@ -104,6 +104,17 @@ type NodeView struct {
 	UnlinkedCT  string
 	RemoteCT    string
 	LinkUnkeyCT string
+
+	// IDRecording is rpt.conf's own "idrecording" -- a node-main-level
+	// field, same tier as RxChannel/Duplex -- confirmed on a real node's
+	// own node-main template as "idrecording = |iNOTSET" (its shipped
+	// placeholder). Either a sound file reference (played for station
+	// ID) or app_rpt's own "|i<text>" CW/morse-code syntax (sent using
+	// the [morse] stanza's speed/frequency/amplitude) -- see
+	// internal/config/telemetry.go's IsCWIDValue/ParseCWIDText, which
+	// apply the exact same "|i" convention this field's own inline
+	// comment documents.
+	IDRecording string
 }
 
 // ListNodes returns the node numbers of every locally-configured node in
@@ -182,6 +193,7 @@ func (s *Store) LoadNode(node string) (*NodeView, error) {
 	view.UnlinkedCT, _ = r.Value("unlinkedct")
 	view.RemoteCT, _ = r.Value("remotect")
 	view.LinkUnkeyCT, _ = r.Value("linkunkeyct")
+	view.IDRecording, _ = r.Value("idrecording")
 
 	switch {
 	case strings.HasPrefix(view.RxChannel, "SimpleUSB/"):
