@@ -16,9 +16,9 @@ import (
 // warning "IAX registration will be discontinued at some point -- Setup
 // rpt_http_registrations.conf instead."
 type Registration struct {
-	Node     string
-	Password string
-	Server   string
+	Node     string `json:"node"`
+	Password string `json:"password"`
+	Server   string `json:"server"`
 }
 
 func (s *Store) registrationsPath() string {
