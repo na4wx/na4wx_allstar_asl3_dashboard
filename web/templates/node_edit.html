@@ -2,110 +2,6 @@
 {{define "content"}}
 <h1>Node {{.View.Node}}</h1>
 
-<form method="post" action="/nodes/{{.View.Node}}">
-  <div class="card">
-    <h2>Repeater behavior (rpt.conf)</h2>
-    <div class="field">
-      <label for="rxchannel">Radio interface</label>
-      <select id="rxchannel" name="rxchannel">
-        <option value="Local/pseudo" {{if eq .View.Interface "Hub (no radio)"}}selected{{end}}>Hub — no radio, links only</option>
-        <option value="SimpleUSB/{{.View.Node}}" {{if eq .View.Interface "SimpleUSB"}}selected{{end}}>SimpleUSB — CM108/119-style USB fob, no DSP</option>
-        <option value="Radio/{{.View.Node}}" {{if eq .View.Interface "USBRadio"}}selected{{end}}>USBRadio — DSP-based USB interface</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="duplex">Duplex</label>
-      <select id="duplex" name="duplex">
-        <option value="0" {{if eq .View.Duplex "0"}}selected{{end}}>0 — Half duplex, no telemetry tones or hang time</option>
-        <option value="1" {{if eq .View.Duplex "1"}}selected{{end}}>1 — Half duplex with telemetry tones and hang time; does not repeat audio (simplex node)</option>
-        <option value="2" {{if eq .View.Duplex "2"}}selected{{end}}>2 — Full duplex with telemetry tones and hang time (repeater)</option>
-        <option value="3" {{if eq .View.Duplex "3"}}selected{{end}}>3 — Full duplex with telemetry tones and hang time, but no repeated audio</option>
-        <option value="4" {{if eq .View.Duplex "4"}}selected{{end}}>4 — Full duplex with telemetry tones and hang time; repeated audio only when the autopatch is down</option>
-      </select>
-      <p class="hint">This is rpt.conf's own duplex (repeater/telemetry behavior) — not the same setting as the radio interface's own duplex below, despite the shared name.</p>
-    </div>
-  </div>
-
-  {{if .View.Radio}}
-  <div class="card">
-    <h2>Radio interface tuning ({{.View.Radio.Driver}})</h2>
-    <div class="field">
-      <label for="rxmixerset">Rx level (rxmixerset)</label>
-      <input type="number" id="rxmixerset" name="rxmixerset" min="0" max="999" value="{{.View.Radio.RxMixerSet}}">
-    </div>
-    <div class="field">
-      <label for="txmixaset">Tx level, channel A (txmixaset)</label>
-      <input type="number" id="txmixaset" name="txmixaset" min="0" max="999" value="{{.View.Radio.TxMixASet}}">
-    </div>
-    <div class="field">
-      <label for="txmixbset">Tx level, channel B (txmixbset)</label>
-      <input type="number" id="txmixbset" name="txmixbset" min="0" max="999" value="{{.View.Radio.TxMixBSet}}">
-    </div>
-    <div class="field">
-      <label for="carrierfrom">Carrier detect source</label>
-      <select id="carrierfrom" name="carrierfrom">
-        <option value="no" {{if eq .View.Radio.CarrierFrom "no"}}selected{{end}}>no — no carrier detection at all</option>
-        <option value="usb" {{if eq .View.Radio.CarrierFrom "usb"}}selected{{end}}>usb — hardware COR line on the USB fob (active high)</option>
-        <option value="usbinvert" {{if eq .View.Radio.CarrierFrom "usbinvert"}}selected{{end}}>usbinvert — hardware COR line, inverted (active low)</option>
-        {{if eq .View.Radio.Driver "usbradio"}}
-        <option value="dsp" {{if eq .View.Radio.CarrierFrom "dsp"}}selected{{end}}>dsp — from RX audio using DSP analysis (no hardware line needed)</option>
-        <option value="vox" {{if eq .View.Radio.CarrierFrom "vox"}}selected{{end}}>vox — voice-activated from RX audio</option>
-        {{end}}
-        <option value="pp" {{if eq .View.Radio.CarrierFrom "pp"}}selected{{end}}>pp — parallel port (active high)</option>
-        <option value="ppinvert" {{if eq .View.Radio.CarrierFrom "ppinvert"}}selected{{end}}>ppinvert — parallel port, inverted (active low)</option>
-      </select>
-      <p class="hint">Where this node decides a signal is present. usb/usbinvert need a real, correctly-wired hardware COR line — if RX never seems to work no matter which of those two you pick, the interface may not have one at all, and{{if eq .View.Radio.Driver "usbradio"}} "dsp" (software-based, no hardware line needed) is worth trying instead{{else}} switching the radio interface above to USBRadio unlocks "dsp" (software-based) detection{{end}}.</p>
-    </div>
-    {{if eq .View.Radio.Driver "usbradio"}}
-    <div class="field">
-      <label for="driverduplex">Audio driver duplex</label>
-      <select id="driverduplex" name="driverduplex">
-        <option value="0" {{if eq .View.Radio.DriverDuplex "0"}}selected{{end}}>0 — half duplex</option>
-        <option value="1" {{if eq .View.Radio.DriverDuplex "1"}}selected{{end}}>1 — full duplex</option>
-      </select>
-      <p class="hint">usbradio.conf's own duplex setting (audio-driver level) — unrelated to rpt.conf's duplex above, despite the shared name.</p>
-    </div>
-    <div class="field">
-      <label for="rxvoiceadj">Rx voice level (rxvoiceadj)</label>
-      <input type="text" id="rxvoiceadj" name="rxvoiceadj" value="{{.View.Radio.RxVoiceAdj}}">
-    </div>
-    <div class="field">
-      <label for="txctcssadj">Tx CTCSS level (txctcssadj)</label>
-      <input type="text" id="txctcssadj" name="txctcssadj" value="{{.View.Radio.TxCtcssAdj}}">
-    </div>
-    <div class="field">
-      <label for="rxsquelchadj">Rx squelch level (rxsquelchadj)</label>
-      <input type="text" id="rxsquelchadj" name="rxsquelchadj" value="{{.View.Radio.RxSquelchAdj}}">
-    </div>
-    {{end}}
-  </div>
-  {{else}}
-  <div class="card">
-    <p class="hint">This node has no radio interface (hub/link-only) — no tuning settings to show. Switching the radio interface above to SimpleUSB or USBRadio and saving will add one.</p>
-  </div>
-  {{end}}
-
-  <div class="card">
-    <h2>HTTP registration (rpt_http_registrations.conf)</h2>
-    <p class="hint">Registers this node with a remote server so other nodes can find it. Enter your AllStarLink registration password to register (or update); leave the password blank to remove this node's registration entirely.</p>
-    <div class="field">
-      <label for="reg_password">Password</label>
-      <input type="text" id="reg_password" name="reg_password" value="{{.Registration.Password}}">
-    </div>
-    <div class="field">
-      <label for="reg_server">Server</label>
-      <input type="text" id="reg_server" name="reg_server" value="{{if .Registration.Server}}{{.Registration.Server}}{{else}}register.allstarlink.org{{end}}">
-    </div>
-  </div>
-
-  <div class="actions">
-    <button type="submit" class="primary">Save</button>
-    <a class="btn" href="/nodes">Cancel</a>
-    <span style="flex:1"></span>
-    <button type="submit" formaction="/nodes/{{.View.Node}}/delete" class="danger" data-confirm="Delete node {{.View.Node}}? This removes it from rpt.conf, usbradio.conf, simpleusb.conf, and any HTTP registration. This cannot be undone." data-confirm-danger>Delete node</button>
-  </div>
-</form>
-
 {{if .View.Radio}}
 {{$last := .SA818Last}}
 <form method="post" action="/nodes/{{.View.Node}}/sa818/apply">
@@ -221,5 +117,109 @@
   </div>
 </form>
 {{end}}
+
+<form method="post" action="/nodes/{{.View.Node}}">
+  <div class="card">
+    <h2>Repeater behavior (rpt.conf)</h2>
+    <div class="field">
+      <label for="rxchannel">Radio interface</label>
+      <select id="rxchannel" name="rxchannel">
+        <option value="Local/pseudo" {{if eq .View.Interface "Hub (no radio)"}}selected{{end}}>Hub — no radio, links only</option>
+        <option value="SimpleUSB/{{.View.Node}}" {{if eq .View.Interface "SimpleUSB"}}selected{{end}}>SimpleUSB — CM108/119-style USB fob, no DSP</option>
+        <option value="Radio/{{.View.Node}}" {{if eq .View.Interface "USBRadio"}}selected{{end}}>USBRadio — DSP-based USB interface</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="duplex">Duplex</label>
+      <select id="duplex" name="duplex">
+        <option value="0" {{if eq .View.Duplex "0"}}selected{{end}}>0 — Half duplex, no telemetry tones or hang time</option>
+        <option value="1" {{if eq .View.Duplex "1"}}selected{{end}}>1 — Half duplex with telemetry tones and hang time; does not repeat audio (simplex node)</option>
+        <option value="2" {{if eq .View.Duplex "2"}}selected{{end}}>2 — Full duplex with telemetry tones and hang time (repeater)</option>
+        <option value="3" {{if eq .View.Duplex "3"}}selected{{end}}>3 — Full duplex with telemetry tones and hang time, but no repeated audio</option>
+        <option value="4" {{if eq .View.Duplex "4"}}selected{{end}}>4 — Full duplex with telemetry tones and hang time; repeated audio only when the autopatch is down</option>
+      </select>
+      <p class="hint">This is rpt.conf's own duplex (repeater/telemetry behavior) — not the same setting as the radio interface's own duplex below, despite the shared name.</p>
+    </div>
+  </div>
+
+  {{if .View.Radio}}
+  <div class="card">
+    <h2>Radio interface tuning ({{.View.Radio.Driver}})</h2>
+    <div class="field">
+      <label for="rxmixerset">Rx level (rxmixerset)</label>
+      <input type="number" id="rxmixerset" name="rxmixerset" min="0" max="999" value="{{.View.Radio.RxMixerSet}}">
+    </div>
+    <div class="field">
+      <label for="txmixaset">Tx level, channel A (txmixaset)</label>
+      <input type="number" id="txmixaset" name="txmixaset" min="0" max="999" value="{{.View.Radio.TxMixASet}}">
+    </div>
+    <div class="field">
+      <label for="txmixbset">Tx level, channel B (txmixbset)</label>
+      <input type="number" id="txmixbset" name="txmixbset" min="0" max="999" value="{{.View.Radio.TxMixBSet}}">
+    </div>
+    <div class="field">
+      <label for="carrierfrom">Carrier detect source</label>
+      <select id="carrierfrom" name="carrierfrom">
+        <option value="no" {{if eq .View.Radio.CarrierFrom "no"}}selected{{end}}>no — no carrier detection at all</option>
+        <option value="usb" {{if eq .View.Radio.CarrierFrom "usb"}}selected{{end}}>usb — hardware COR line on the USB fob (active high)</option>
+        <option value="usbinvert" {{if eq .View.Radio.CarrierFrom "usbinvert"}}selected{{end}}>usbinvert — hardware COR line, inverted (active low)</option>
+        {{if eq .View.Radio.Driver "usbradio"}}
+        <option value="dsp" {{if eq .View.Radio.CarrierFrom "dsp"}}selected{{end}}>dsp — from RX audio using DSP analysis (no hardware line needed)</option>
+        <option value="vox" {{if eq .View.Radio.CarrierFrom "vox"}}selected{{end}}>vox — voice-activated from RX audio</option>
+        {{end}}
+        <option value="pp" {{if eq .View.Radio.CarrierFrom "pp"}}selected{{end}}>pp — parallel port (active high)</option>
+        <option value="ppinvert" {{if eq .View.Radio.CarrierFrom "ppinvert"}}selected{{end}}>ppinvert — parallel port, inverted (active low)</option>
+      </select>
+      <p class="hint">Where this node decides a signal is present. usb/usbinvert need a real, correctly-wired hardware COR line — if RX never seems to work no matter which of those two you pick, the interface may not have one at all, and{{if eq .View.Radio.Driver "usbradio"}} "dsp" (software-based, no hardware line needed) is worth trying instead{{else}} switching the radio interface above to USBRadio unlocks "dsp" (software-based) detection{{end}}.</p>
+    </div>
+    {{if eq .View.Radio.Driver "usbradio"}}
+    <div class="field">
+      <label for="driverduplex">Audio driver duplex</label>
+      <select id="driverduplex" name="driverduplex">
+        <option value="0" {{if eq .View.Radio.DriverDuplex "0"}}selected{{end}}>0 — half duplex</option>
+        <option value="1" {{if eq .View.Radio.DriverDuplex "1"}}selected{{end}}>1 — full duplex</option>
+      </select>
+      <p class="hint">usbradio.conf's own duplex setting (audio-driver level) — unrelated to rpt.conf's duplex above, despite the shared name.</p>
+    </div>
+    <div class="field">
+      <label for="rxvoiceadj">Rx voice level (rxvoiceadj)</label>
+      <input type="text" id="rxvoiceadj" name="rxvoiceadj" value="{{.View.Radio.RxVoiceAdj}}">
+    </div>
+    <div class="field">
+      <label for="txctcssadj">Tx CTCSS level (txctcssadj)</label>
+      <input type="text" id="txctcssadj" name="txctcssadj" value="{{.View.Radio.TxCtcssAdj}}">
+    </div>
+    <div class="field">
+      <label for="rxsquelchadj">Rx squelch level (rxsquelchadj)</label>
+      <input type="text" id="rxsquelchadj" name="rxsquelchadj" value="{{.View.Radio.RxSquelchAdj}}">
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="card">
+    <p class="hint">This node has no radio interface (hub/link-only) — no tuning settings to show. Switching the radio interface above to SimpleUSB or USBRadio and saving will add one.</p>
+  </div>
+  {{end}}
+
+  <div class="card">
+    <h2>HTTP registration (rpt_http_registrations.conf)</h2>
+    <p class="hint">Registers this node with a remote server so other nodes can find it. Enter your AllStarLink registration password to register (or update); leave the password blank to remove this node's registration entirely.</p>
+    <div class="field">
+      <label for="reg_password">Password</label>
+      <input type="text" id="reg_password" name="reg_password" value="{{.Registration.Password}}">
+    </div>
+    <div class="field">
+      <label for="reg_server">Server</label>
+      <input type="text" id="reg_server" name="reg_server" value="{{if .Registration.Server}}{{.Registration.Server}}{{else}}register.allstarlink.org{{end}}">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a class="btn" href="/nodes">Cancel</a>
+    <span style="flex:1"></span>
+    <button type="submit" formaction="/nodes/{{.View.Node}}/delete" class="danger" data-confirm="Delete node {{.View.Node}}? This removes it from rpt.conf, usbradio.conf, simpleusb.conf, and any HTTP registration. This cannot be undone." data-confirm-danger>Delete node</button>
+  </div>
+</form>
 {{end}}
 {{template "layout" .}}
