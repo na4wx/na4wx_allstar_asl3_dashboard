@@ -129,6 +129,16 @@ const confirmModal = (function () {
 // button.form.requestSubmit(button), which respects that button's own
 // formaction/form attributes (e.g. a delete button pointing at a
 // different form) -- the same thing a real click on it would have done.
+//
+// The form-level path below carries the original submitter through to
+// its own requestSubmit(submitter) call for the same reason: a form with
+// more than one named submit button (e.g. Home's Link/Unlink quick
+// action, both sharing one data-confirm on the <form> itself) needs the
+// resubmitted event's own e.submitter to still identify which button was
+// actually clicked -- requestSubmit() with no argument fires a fresh
+// submit with e.submitter null, which silently dropped which action was
+// requested (AppSocket's submit handler had nothing to add the button's
+// name/value from) until this was fixed.
 (function () {
   const approvedForms = new WeakSet();
 
@@ -140,12 +150,13 @@ const confirmModal = (function () {
       return;
     }
     e.preventDefault();
+    const submitter = e.submitter || undefined;
     confirmModal(form.getAttribute("data-confirm"), {
       danger: form.hasAttribute("data-confirm-danger"),
     }).then((ok) => {
       if (!ok) return;
       approvedForms.add(form);
-      form.requestSubmit();
+      form.requestSubmit(submitter);
     });
   });
 
