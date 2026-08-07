@@ -13,7 +13,9 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/auth"
@@ -98,6 +100,19 @@ type Server struct {
 	nodes   *nodedb.Store
 	history *linkHistory
 	live    *liveHub
+
+	// restartNeeded is set whenever cfg writes any Asterisk config file
+	// (see config.Store's own OnChange field, wired below in New) and
+	// drives layout.html's own red "Asterisk must be restarted" bar,
+	// shown on every page until an operator restarts it (either from
+	// here or from the System page's own button, both of which clear
+	// it). Deliberately in-memory only, not persisted to disk: it
+	// starts back at false on every asl3-gui process restart, which
+	// means a config change made just before, say, a reboot won't be
+	// flagged after the box comes back -- an accepted gap, since
+	// Asterisk itself also restarts on reboot and so has already picked
+	// up that change by the time this process is running again to ask.
+	restartNeeded atomic.Bool
 }
 
 // NodeDB exposes the node directory so main can drive its own
@@ -151,6 +166,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		),
 		cloudURLDefault: cloudURLDefault,
 	}
+	cfg.OnChange = func() { s.restartNeeded.Store(true) }
 	s.live = newLiveHub(s)
 
 	tmpl, err := s.parseTemplates(templatesFS)
@@ -183,7 +199,7 @@ func (s *Server) StartWiFiWatchdog(ctx context.Context) {
 // routes with a real handler are registered in routes() below.
 func (s *Server) parseTemplates(templatesFS fs.FS) (map[string]*template.Template, error) {
 	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_edit.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
-	funcs := template.FuncMap{"restartNeeded": func() bool { return false }}
+	funcs := template.FuncMap{"restartNeeded": func() bool { return s.restartNeeded.Load() }}
 	out := map[string]*template.Template{}
 	for _, page := range pages {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templatesFS, "layout.html", "radio_device_fields.html", "node_history.html", page)
@@ -257,6 +273,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
 	s.mux.HandleFunc("POST /system/password", s.requireAuth(s.handleSystemPassword))
 	s.mux.HandleFunc("POST /system/restart-asterisk", s.requireAuth(s.handleSystemRestartAsterisk))
+	s.mux.HandleFunc("POST /system/apply-restart", s.requireAuth(s.handleApplyRestart))
 	s.mux.HandleFunc("POST /system/reboot", s.requireAuth(s.handleSystemReboot))
 	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
 	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
@@ -273,6 +290,34 @@ type pageData struct {
 
 func flash(kind, msg string) pageData {
 	return pageData{LoggedIn: true, FlashKind: kind, Flash: msg}
+}
+
+// refererPath returns the path+query of r's own Referer header, so a
+// handler reachable from any page (like the restart bar's Apply
+// Changes button -- see handleApplyRestart) can send the operator back
+// to whichever page they actually clicked it from instead of always
+// landing on one fixed page. Only trusts a same-origin Referer (matched
+// against r.Host, ignoring scheme so this works the same whether or not
+// the app is behind TLS); anything else -- missing, unparseable, or
+// pointing elsewhere -- falls back to "/", never redirecting off-site
+// based on a header the client controls.
+func refererPath(r *http.Request) string {
+	ref := r.Header.Get("Referer")
+	if ref == "" {
+		return "/"
+	}
+	u, err := url.Parse(ref)
+	if err != nil || u.Host != r.Host {
+		return "/"
+	}
+	p := u.Path
+	if p == "" {
+		p = "/"
+	}
+	if u.RawQuery != "" {
+		p += "?" + u.RawQuery
+	}
+	return p
 }
 
 func (s *Server) render(w http.ResponseWriter, page string, data any) {

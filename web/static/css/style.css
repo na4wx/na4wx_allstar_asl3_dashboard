@@ -356,6 +356,17 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
 .data-table tbody tr:hover { background: var(--surface); }
 .data-table tbody tr:last-child td { border-bottom: none; }
 
+/* Home's "Connected right now" table: rows are clickable (see app.js --
+   picks a peer into that same node's "Other node's number" field below),
+   so they get a pointer cursor and a stronger hover than a plain,
+   non-interactive data table row. */
+[data-live-connected] tbody tr {
+  cursor: pointer;
+}
+[data-live-connected] tbody tr:hover {
+  background: var(--accent-soft);
+}
+
 /* A connected peer that is transmitting right now (RPT_ALINKS keyed),
    on the "Connected right now" live table -- the same danger-toned
    language as .talking-badge, just applied to the whole row so it reads
@@ -546,6 +557,61 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   border-color: color-mix(in srgb, var(--ok) 25%, transparent);
   border-left-color: var(--ok);
   color: color-mix(in srgb, var(--ok) 80%, var(--text));
+}
+
+/* Toasts: the same server-rendered flash message (see .flash above),
+   moved out of <main> and floated over the page instead -- so the
+   result of an action taken while scrolled away from the top (a long
+   node-edit page, a long history table) is still seen without having to
+   scroll up first. See app.js's own AppSocket module for the JS that
+   converts one into the other. */
+.toast-container {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: min(420px, calc(100vw - 2.5rem));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  border-left-color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text));
+}
+.toast.ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
+  border-left-color: var(--ok);
+  color: color-mix(in srgb, var(--ok) 80%, var(--text));
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: opacity 0.2s ease; transform: none; }
+}
+@media (max-width: 620px) {
+  .toast-container { left: 1rem; right: 1rem; bottom: 1rem; max-width: none; }
 }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; }

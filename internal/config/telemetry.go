@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"hamvoipconfiggui-asl3/internal/asteriskconf"
 )
 
 // ToneSpec is one single-segment app_rpt tone-generator instruction --
@@ -117,7 +115,7 @@ func (s *Store) ListTelemetryEntries(section string) ([]TelemetryEntry, error) {
 // "[telemetry](telemetry-main)" override section by default, confirmed
 // on a real node).
 func (s *Store) SetTelemetryEntries(section string, updates map[string]string) error {
-	if err := asteriskconf.SetValues(filepath.Join(s.dir(), "rpt.conf"), section, updates); err != nil {
+	if err := s.setValues(filepath.Join(s.dir(), "rpt.conf"), section, updates); err != nil {
 		return fmt.Errorf("config: update telemetry section %q: %w", section, err)
 	}
 	return nil
@@ -140,7 +138,7 @@ func (s *Store) SetCourtesyToneAssignments(node, unlinkedCT, remoteCT, linkUnkey
 		"remotect":    remoteCT,
 		"linkunkeyct": linkUnkeyCT,
 	}
-	if err := asteriskconf.SetValues(path, node, updates); err != nil {
+	if err := s.setValues(path, node, updates); err != nil {
 		return fmt.Errorf("config: set courtesy tone assignments for node %q: %w", node, err)
 	}
 	return nil

@@ -3,8 +3,6 @@ package config
 import (
 	"fmt"
 	"path/filepath"
-
-	"hamvoipconfiggui-asl3/internal/asteriskconf"
 )
 
 // ScheduleEntry is one row of an app_rpt "schedule" stanza in rpt.conf --
@@ -54,10 +52,10 @@ func (s *Store) ListScheduleEntries(section string) ([]ScheduleEntry, error) {
 // section, on its first scheduled connection).
 func (s *Store) SetScheduleEntry(section, macroNum, timeSpec string) error {
 	path := filepath.Join(s.dir(), "rpt.conf")
-	if err := ensureSectionExists(path, section); err != nil {
+	if err := s.ensureSectionExists(path, section); err != nil {
 		return fmt.Errorf("config: set schedule entry %s.%s: %w", section, macroNum, err)
 	}
-	if err := asteriskconf.SetValues(path, section, map[string]string{macroNum: timeSpec}); err != nil {
+	if err := s.setValues(path, section, map[string]string{macroNum: timeSpec}); err != nil {
 		return fmt.Errorf("config: set schedule entry %s.%s: %w", section, macroNum, err)
 	}
 	return nil
@@ -66,7 +64,7 @@ func (s *Store) SetScheduleEntry(section, macroNum, timeSpec string) error {
 // DeleteScheduleEntry removes one schedule entry from section's own
 // body.
 func (s *Store) DeleteScheduleEntry(section, macroNum string) error {
-	if err := asteriskconf.RemoveValue(filepath.Join(s.dir(), "rpt.conf"), section, macroNum); err != nil {
+	if err := s.removeValue(filepath.Join(s.dir(), "rpt.conf"), section, macroNum); err != nil {
 		return fmt.Errorf("config: delete schedule entry %s.%s: %w", section, macroNum, err)
 	}
 	return nil
@@ -79,7 +77,7 @@ func (s *Store) DeleteScheduleEntry(section, macroNum string) error {
 // time a scheduled connection is saved for it, without risking any
 // other field on the node's stanza.
 func (s *Store) SetNodeScheduler(node, section string) error {
-	if err := asteriskconf.SetValues(filepath.Join(s.dir(), "rpt.conf"), node, map[string]string{"scheduler": section}); err != nil {
+	if err := s.setValues(filepath.Join(s.dir(), "rpt.conf"), node, map[string]string{"scheduler": section}); err != nil {
 		return fmt.Errorf("config: set scheduler for node %q: %w", node, err)
 	}
 	return nil

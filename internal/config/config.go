@@ -20,6 +20,25 @@ type Store struct {
 	// Dir overrides the config directory, for tests. Defaults to
 	// /etc/asterisk.
 	Dir string
+
+	// OnChange, if set, is called once after every successful write to
+	// any Asterisk config file this Store manages -- e.g. so internal/
+	// server can flag that Asterisk needs a restart for the change to
+	// take effect. Routed through the small set of write-primitive
+	// wrappers in write_hooks.go rather than added at each of this
+	// package's several dozen individual Set*/Create*/Delete*/Add*
+	// call sites, so a future write method can't forget to call it.
+	// Never called after a failed write.
+	OnChange func()
+}
+
+// notifyChanged calls OnChange if set. Safe to call from any write
+// wrapper regardless of whether OnChange was ever configured (tests and
+// several call sites construct a Store with a bare struct literal).
+func (s *Store) notifyChanged() {
+	if s.OnChange != nil {
+		s.OnChange()
+	}
 }
 
 func NewStore() *Store { return &Store{} }

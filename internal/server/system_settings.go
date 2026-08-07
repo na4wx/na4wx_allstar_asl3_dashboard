@@ -21,6 +21,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -163,7 +164,37 @@ func (s *Server) handleSystemRestartAsterisk(w http.ResponseWriter, r *http.Requ
 		s.renderSystemPage(w, r, flash("error", err.Error()))
 		return
 	}
+	s.restartNeeded.Store(false)
 	s.renderSystemPage(w, r, flash("ok", "Asterisk restarted"))
+}
+
+// handleApplyRestart is the red "Asterisk must be restarted" bar's own
+// button (see layout.html), reachable from any page since the bar
+// itself shows on any page -- the exact same restart System's own
+// button performs. On success, it redirects back to wherever the
+// operator actually clicked it from (see refererPath): the bar
+// disappearing on the next render is itself the confirmation, no flash
+// needed on top of that.
+//
+// On failure it redirects to System instead of rendering a flash in
+// place, even though that drops the specific error message -- this
+// handler is reachable from any page, and rendering a different page's
+// content in place (as System's own error flash would) leaves the
+// browser's address bar pointing at wherever the operator actually was,
+// disagreeing with what's now on screen (breaking reload/back/bookmark
+// until the next real navigation). A real restart failure here is rare
+// (systemctl itself would have to be missing or refuse); System's own
+// Restart Asterisk button already renders its own error correctly in
+// place if the operator retries from there.
+func (s *Server) handleApplyRestart(w http.ResponseWriter, r *http.Request) {
+	dest := refererPath(r)
+	if err := system.AsteriskRestart(r.Context()); err != nil {
+		log.Printf("apply restart: %v", err)
+		http.Redirect(w, r, "/system", http.StatusSeeOther)
+		return
+	}
+	s.restartNeeded.Store(false)
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
 func (s *Server) handleSystemReboot(w http.ResponseWriter, r *http.Request) {

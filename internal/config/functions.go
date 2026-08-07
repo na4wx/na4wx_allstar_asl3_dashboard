@@ -57,10 +57,10 @@ func (s *Store) ListFunctionMacros(section string) ([]FunctionMacro, error) {
 // scheduler/macro section, on its first use.
 func (s *Store) SetFunctionMacro(section, digits, command string) error {
 	path := filepath.Join(s.dir(), "rpt.conf")
-	if err := ensureSectionExists(path, section); err != nil {
+	if err := s.ensureSectionExists(path, section); err != nil {
 		return fmt.Errorf("config: set %s.%s: %w", section, digits, err)
 	}
-	if err := asteriskconf.SetValues(path, section, map[string]string{digits: command}); err != nil {
+	if err := s.setValues(path, section, map[string]string{digits: command}); err != nil {
 		return fmt.Errorf("config: set %s.%s: %w", section, digits, err)
 	}
 	return nil
@@ -68,7 +68,7 @@ func (s *Store) SetFunctionMacro(section, digits, command string) error {
 
 // ensureSectionExists creates section in path (a brand-new, empty
 // section) if it isn't already there.
-func ensureSectionExists(path, section string) error {
+func (s *Store) ensureSectionExists(path, section string) error {
 	exists, err := asteriskconf.SectionExists(path, section)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func ensureSectionExists(path, section string) error {
 	if exists {
 		return nil
 	}
-	return asteriskconf.CreateSection(path, section, nil, nil)
+	return s.createSection(path, section, nil, nil)
 }
 
 // DeleteFunctionMacro removes one DTMF mapping from section's own body.
@@ -84,7 +84,7 @@ func ensureSectionExists(path, section string) error {
 // on this section directly), there's nothing to remove here -- see
 // asteriskconf.RemoveValue's own doc comment: a no-op, not an error.
 func (s *Store) DeleteFunctionMacro(section, digits string) error {
-	if err := asteriskconf.RemoveValue(filepath.Join(s.dir(), "rpt.conf"), section, digits); err != nil {
+	if err := s.removeValue(filepath.Join(s.dir(), "rpt.conf"), section, digits); err != nil {
 		return fmt.Errorf("config: delete %s.%s: %w", section, digits, err)
 	}
 	return nil

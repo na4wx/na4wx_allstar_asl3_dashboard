@@ -80,7 +80,7 @@ func (s *Store) SetRawKey(name, section string, index int, value string) (ok boo
 	if !IsAllowedRawConfigFile(name) {
 		return false, fmt.Errorf("config: %q is not one of this app's editable config files", name)
 	}
-	ok, err = asteriskconf.SetNthValueInSection(filepath.Join(s.dir(), name), section, index, value)
+	ok, err = s.setNthValueInSection(filepath.Join(s.dir(), name), section, index, value)
 	if err != nil {
 		return false, fmt.Errorf("config: set key in %s %q: %w", name, section, err)
 	}
@@ -95,7 +95,7 @@ func (s *Store) AddRawKey(name, section, key, value string) error {
 	if !IsAllowedRawConfigFile(name) {
 		return fmt.Errorf("config: %q is not one of this app's editable config files", name)
 	}
-	if err := asteriskconf.SetValues(filepath.Join(s.dir(), name), section, map[string]string{key: value}); err != nil {
+	if err := s.setValues(filepath.Join(s.dir(), name), section, map[string]string{key: value}); err != nil {
 		return fmt.Errorf("config: add key to %s %q: %w", name, section, err)
 	}
 	return nil
@@ -107,7 +107,7 @@ func (s *Store) AddRawSection(name, section string) error {
 	if !IsAllowedRawConfigFile(name) {
 		return fmt.Errorf("config: %q is not one of this app's editable config files", name)
 	}
-	if err := asteriskconf.CreateSection(filepath.Join(s.dir(), name), section, nil, nil); err != nil {
+	if err := s.createSection(filepath.Join(s.dir(), name), section, nil, nil); err != nil {
 		return fmt.Errorf("config: add section %q to %s: %w", section, name, err)
 	}
 	return nil

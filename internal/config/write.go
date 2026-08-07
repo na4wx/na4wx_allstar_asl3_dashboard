@@ -3,15 +3,14 @@ package config
 import (
 	"fmt"
 	"path/filepath"
-
-	"hamvoipconfiggui-asl3/internal/asteriskconf"
 )
 
 // UpdateNodeSettings updates the given rpt.conf-level fields (e.g.
 // rxchannel, duplex) within a node's own stanza, preserving everything
-// else in the file. The node must already exist -- see internal/asteriskconf.SetValues.
+// else in the file. The node must already exist -- see this package's
+// own setValues (write_hooks.go).
 func (s *Store) UpdateNodeSettings(node string, updates map[string]string) error {
-	if err := asteriskconf.SetValues(filepath.Join(s.dir(), "rpt.conf"), node, updates); err != nil {
+	if err := s.setValues(filepath.Join(s.dir(), "rpt.conf"), node, updates); err != nil {
 		return fmt.Errorf("config: update node %q in rpt.conf: %w", node, err)
 	}
 	if rxchannel, ok := updates["rxchannel"]; ok {
@@ -40,7 +39,7 @@ func (s *Store) UpdateRadioSettings(node string, updates map[string]string) erro
 	default:
 		return fmt.Errorf("config: node %q has no radio interface to update (rxchannel=%q)", node, view.RxChannel)
 	}
-	if err := asteriskconf.SetValues(filepath.Join(s.dir(), filename), node, updates); err != nil {
+	if err := s.setValues(filepath.Join(s.dir(), filename), node, updates); err != nil {
 		return fmt.Errorf("config: update node %q in %s: %w", node, filename, err)
 	}
 	return nil

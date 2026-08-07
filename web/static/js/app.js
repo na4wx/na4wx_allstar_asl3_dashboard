@@ -311,6 +311,7 @@ const AppSocket = (function () {
       showRawFallback(html);
       return;
     }
+    syncRestartBar(doc);
     // A missing url (see ws.go's replay's own doc comment) means the
     // server has no independently GET-able page to report -- e.g. a
     // handler that rendered in place without redirecting. Treat exactly
@@ -325,6 +326,23 @@ const AppSocket = (function () {
     }
     window.scrollTo(0, scrollY);
     document.dispatchEvent(new CustomEvent("app:content-swapped"));
+  }
+
+  // The "Asterisk must be restarted" bar (see layout.html's own
+  // restartNeeded) lives outside <main>, in the persistent header/footer
+  // chrome this module otherwise never touches -- so a WS-driven action
+  // that flips the flag (any config save; see config.Store's own
+  // OnChange) needs its own explicit sync here, or the bar would only
+  // ever appear/disappear on a real full page load.
+  function syncRestartBar(doc) {
+    const newBar = doc.querySelector(".restart-bar");
+    const liveBar = document.querySelector(".restart-bar");
+    if (newBar && !liveBar) {
+      const header = document.querySelector("header.topbar");
+      if (header) header.insertAdjacentElement("afterend", newBar.cloneNode(true));
+    } else if (!newBar && liveBar) {
+      liveBar.remove();
+    }
   }
 
   // A bare error response (a handler that never reached s.render(), e.g.
@@ -612,6 +630,28 @@ document.addEventListener("click", (e) => {
   digitsField.focus();
 });
 
+// Home's "Connected right now" table: clicking a row fills that same
+// node's own "Other node's number" field with the clicked peer, so
+// linking/unlinking someone already on screen is a click instead of
+// retyping their number. Delegated (works on both the server-rendered
+// table and AppSocket's own live-updated one -- see renderConnectedTable
+// -- without needing to know which one is showing) and reads the DOM
+// directly rather than needing new data attributes: the row's own first
+// cell is always the peer's node number (see rptstatus.BuildLstatsRows,
+// which always puts app_rpt's own NODE column first), and the target
+// field's id is already scoped per-node ("quick_target_<this node>").
+document.addEventListener("click", (e) => {
+  const row = e.target.closest("[data-live-connected] tbody tr");
+  if (!row) return;
+  const card = row.closest("[data-live-node]");
+  const firstCell = row.querySelector("td");
+  if (!card || !firstCell) return;
+  const target = document.getElementById("quick_target_" + card.getAttribute("data-live-node"));
+  if (!target) return;
+  target.value = firstCell.textContent.trim();
+  target.focus();
+});
+
 // "Play" buttons next to each Custom sound files row. One shared Audio
 // element for the whole page (not one per row) so starting a second clip
 // always stops whichever one was already playing, and clicking the same
@@ -734,6 +774,63 @@ function initStatusPoll() {
   statusPollTimer = setInterval(poll, 4000);
 }
 
+// Toasts: the server still renders a plain flash div at the top of
+// <main> (see layout.html) -- kept as the single source of truth for
+// what happened, and as the plain-HTTP fallback's only notification --
+// but with JS running it's immediately pulled out and shown as a
+// floating toast instead, so the result of an action is seen no matter
+// how far down the page the operator has scrolled (a long node-edit
+// page, a long history table). One shared container for the life of the
+// tab; a toast auto-dismisses on its own or on click.
+let toastContainer = null;
+function getToastContainer() {
+  if (!toastContainer) {
+    toastContainer = document.createElement("div");
+    toastContainer.className = "toast-container";
+    document.body.appendChild(toastContainer);
+  }
+  return toastContainer;
+}
+
+function showToast(kind, message) {
+  if (!message) return;
+  const container = getToastContainer();
+  const toast = document.createElement("div");
+  toast.className = "toast" + (kind ? " " + kind : "");
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    clearTimeout(timer);
+    toast.classList.remove("show");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+    // Fallback in case the transition never fires (prefers-reduced-motion,
+    // or the toast was already detached) -- never leave a dead toast
+    // sitting in the container forever.
+    setTimeout(() => toast.remove(), 400);
+  };
+  toast.addEventListener("click", dismiss);
+  const timer = setTimeout(dismiss, kind === "error" ? 8000 : 5000);
+
+  requestAnimationFrame(() => toast.classList.add("show"));
+}
+
+// The flash div is always main's own first child when present (see
+// layout.html: `<main>{{if .Flash}}<div class="flash ...">{{end}}...`),
+// never nested inside the page's own content -- so this selector is
+// exact, not a guess.
+function convertFlashToToast() {
+  const flash = document.querySelector("main > .flash");
+  if (!flash) return;
+  const kind = flash.classList.contains("error") ? "error" : flash.classList.contains("ok") ? "ok" : "";
+  const message = flash.textContent.trim();
+  flash.remove();
+  showToast(kind, message);
+}
+
 // Runs every stateful, content-scoped init above once on first load and
 // again after every AppSocket content swap (a saved form, a link
 // navigation -- anything that replaces <main>). Each function re-scans
@@ -742,6 +839,7 @@ function initStatusPoll() {
 // check), so there's no "did this page change since last time" logic
 // needed here.
 function initPageFeatures() {
+  convertFlashToToast();
   initTabs();
   applyRadioMode();
   applyTypeToggle();

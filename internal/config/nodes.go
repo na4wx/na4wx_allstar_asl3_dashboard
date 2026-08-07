@@ -40,13 +40,13 @@ func (s *Store) CreateNode(node, rxchannel, duplex string) error {
 	}
 
 	rptPath := filepath.Join(s.dir(), "rpt.conf")
-	if err := asteriskconf.CreateSection(rptPath, node, []string{"node-main"}, []asteriskconf.Pair{
+	if err := s.createSection(rptPath, node, []string{"node-main"}, []asteriskconf.Pair{
 		{Key: "rxchannel", Value: rxchannel, Op: "="},
 		{Key: "duplex", Value: duplex, Op: "="},
 	}); err != nil {
 		return fmt.Errorf("config: create node %q in rpt.conf: %w", node, err)
 	}
-	if err := asteriskconf.SetValues(rptPath, "nodes", map[string]string{
+	if err := s.setValues(rptPath, "nodes", map[string]string{
 		node: fmt.Sprintf("radio@127.0.0.1/%s,NONE", node),
 	}); err != nil {
 		return fmt.Errorf("config: add node %q loopback entry: %w", node, err)
@@ -60,7 +60,7 @@ func (s *Store) CreateNode(node, rxchannel, duplex string) error {
 			{Key: "txmixaset", Value: "500", Op: "="},
 			{Key: "txmixbset", Value: "500", Op: "="},
 		}
-		if err := asteriskconf.CreateSection(filepath.Join(s.dir(), "simpleusb.conf"), node, []string{"node-main"}, simpleusbTune); err != nil {
+		if err := s.createSection(filepath.Join(s.dir(), "simpleusb.conf"), node, []string{"node-main"}, simpleusbTune); err != nil {
 			return fmt.Errorf("config: create node %q in simpleusb.conf: %w", node, err)
 		}
 
@@ -69,7 +69,7 @@ func (s *Store) CreateNode(node, rxchannel, duplex string) error {
 			asteriskconf.Pair{Key: "txctcssadj", Value: "200", Op: "="},
 			asteriskconf.Pair{Key: "rxsquelchadj", Value: "500", Op: "="},
 		)
-		if err := asteriskconf.CreateSection(filepath.Join(s.dir(), "usbradio.conf"), node, []string{"node-main"}, usbradioTune); err != nil {
+		if err := s.createSection(filepath.Join(s.dir(), "usbradio.conf"), node, []string{"node-main"}, usbradioTune); err != nil {
 			return fmt.Errorf("config: create node %q in usbradio.conf: %w", node, err)
 		}
 	}
@@ -86,16 +86,16 @@ func (s *Store) CreateNode(node, rxchannel, duplex string) error {
 // it actually exists. No error for pieces that are already absent.
 func (s *Store) DeleteNode(node string) error {
 	rptPath := filepath.Join(s.dir(), "rpt.conf")
-	if err := asteriskconf.RemoveSection(rptPath, node); err != nil {
+	if err := s.removeSection(rptPath, node); err != nil {
 		return fmt.Errorf("config: remove node %q from rpt.conf: %w", node, err)
 	}
-	if err := asteriskconf.RemoveValue(rptPath, "nodes", node); err != nil {
+	if err := s.removeValue(rptPath, "nodes", node); err != nil {
 		return fmt.Errorf("config: remove node %q loopback entry: %w", node, err)
 	}
-	if err := asteriskconf.RemoveSection(filepath.Join(s.dir(), "usbradio.conf"), node); err != nil {
+	if err := s.removeSection(filepath.Join(s.dir(), "usbradio.conf"), node); err != nil {
 		return fmt.Errorf("config: remove node %q from usbradio.conf: %w", node, err)
 	}
-	if err := asteriskconf.RemoveSection(filepath.Join(s.dir(), "simpleusb.conf"), node); err != nil {
+	if err := s.removeSection(filepath.Join(s.dir(), "simpleusb.conf"), node); err != nil {
 		return fmt.Errorf("config: remove node %q from simpleusb.conf: %w", node, err)
 	}
 	if err := s.RemoveRegistration(node); err != nil {

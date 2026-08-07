@@ -63,7 +63,7 @@ func (s *Store) SetRegistration(reg Registration) error {
 	if reg.Node == "" {
 		return fmt.Errorf("config: registration node number is required")
 	}
-	err := asteriskconf.SetRepeatingValue(s.registrationsPath(), "registrations", "register", reg.Node+":", formatRegistration(reg))
+	err := s.setRepeatingValue(s.registrationsPath(), "registrations", "register", reg.Node+":", formatRegistration(reg))
 	if err != nil {
 		return fmt.Errorf("config: set registration for node %q: %w", reg.Node, err)
 	}
@@ -74,7 +74,7 @@ func (s *Store) SetRegistration(reg Registration) error {
 // error if it doesn't, or if rpt_http_registrations.conf doesn't exist at
 // all.
 func (s *Store) RemoveRegistration(node string) error {
-	err := asteriskconf.RemoveRepeatingValue(s.registrationsPath(), "registrations", "register", node+":")
+	err := s.removeRepeatingValue(s.registrationsPath(), "registrations", "register", node+":")
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
