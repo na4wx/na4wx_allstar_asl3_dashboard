@@ -73,6 +73,10 @@ func (s *Store) CreateNode(node, rxchannel, duplex string) error {
 			return fmt.Errorf("config: create node %q in usbradio.conf: %w", node, err)
 		}
 	}
+
+	if err := s.syncModulesForRxChannel(rxchannel); err != nil {
+		return fmt.Errorf("config: create node %q: %w", node, err)
+	}
 	return nil
 }
 

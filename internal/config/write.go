@@ -14,6 +14,11 @@ func (s *Store) UpdateNodeSettings(node string, updates map[string]string) error
 	if err := asteriskconf.SetValues(filepath.Join(s.dir(), "rpt.conf"), node, updates); err != nil {
 		return fmt.Errorf("config: update node %q in rpt.conf: %w", node, err)
 	}
+	if rxchannel, ok := updates["rxchannel"]; ok {
+		if err := s.syncModulesForRxChannel(rxchannel); err != nil {
+			return fmt.Errorf("config: update node %q: %w", node, err)
+		}
+	}
 	return nil
 }
 

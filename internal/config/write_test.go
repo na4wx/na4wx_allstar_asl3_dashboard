@@ -9,7 +9,7 @@ import (
 func tempStoreFromFixtures(t *testing.T) *Store {
 	t.Helper()
 	dir := t.TempDir()
-	for _, name := range []string{"rpt.conf", "usbradio.conf", "simpleusb.conf", "rpt_http_registrations.conf"} {
+	for _, name := range []string{"rpt.conf", "usbradio.conf", "simpleusb.conf", "rpt_http_registrations.conf", "modules.conf"} {
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
 			t.Fatal(err)
