@@ -46,6 +46,18 @@ type RadioView struct {
 	// asteriskconf's TestUsbradioConfDuplexIsDistinctFromRptConfDuplex.
 	DriverDuplex string
 
+	// CarrierFrom/CtcssFrom control where carrier/CTCSS detection comes
+	// from -- confirmed the hard way, on real hardware, that a mismatch
+	// here (or the corresponding channel driver module simply not being
+	// loaded, see internal/config's own modules.go) is what actually
+	// determines whether RX works at all, not something cosmetic. Valid
+	// values differ by Driver: simpleusb supports
+	// no/usb/usbinvert/pp/ppinvert (see simpleusb.conf's own comments);
+	// usbradio additionally supports dsp (CarrierFrom and CtcssFrom) and
+	// vox (CarrierFrom only) (see usbradio.conf's own comments).
+	CarrierFrom string
+	CtcssFrom   string
+
 	RxMixerSet string
 	TxMixASet  string
 	TxMixBSet  string
@@ -188,6 +200,8 @@ func (s *Store) loadRadio(filename, node, driver string) (*RadioView, error) {
 	}
 
 	radio := &RadioView{Driver: driver}
+	radio.CarrierFrom, _ = r.Value("carrierfrom")
+	radio.CtcssFrom, _ = r.Value("ctcssfrom")
 	radio.RxMixerSet, _ = r.Value("rxmixerset")
 	radio.TxMixASet, _ = r.Value("txmixaset")
 	radio.TxMixBSet, _ = r.Value("txmixbset")

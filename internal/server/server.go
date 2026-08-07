@@ -362,6 +362,16 @@ func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
 var validDuplex = map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true}
 var validDriverDuplex = map[string]bool{"0": true, "1": true}
 
+// validFromSimpleUSB is SimpleUSB's own real option set for both
+// carrierfrom and ctcssfrom, confirmed against simpleusb.conf's own
+// comments on a real node. USBRadio's option sets differ (it adds dsp,
+// and carrierfrom-only adds vox) -- confirmed against usbradio.conf's
+// own comments; see validCarrierFromUSBRadio/validCtcssFromUSBRadio.
+var validFromSimpleUSB = map[string]bool{"no": true, "usb": true, "usbinvert": true, "pp": true, "ppinvert": true}
+
+var validCarrierFromUSBRadio = map[string]bool{"no": true, "usb": true, "usbinvert": true, "dsp": true, "vox": true, "pp": true, "ppinvert": true}
+var validCtcssFromUSBRadio = map[string]bool{"no": true, "usb": true, "usbinvert": true, "dsp": true, "pp": true, "ppinvert": true}
+
 func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 	num := r.PathValue("node")
 	if _, err := s.cfg.LoadNode(num); err != nil {
@@ -405,6 +415,26 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 				updates[key] = v
 			}
 		}
+
+		validCarrierFrom, validCtcssFrom := validFromSimpleUSB, validFromSimpleUSB
+		if strings.HasPrefix(rxchannel, "Radio/") {
+			validCarrierFrom, validCtcssFrom = validCarrierFromUSBRadio, validCtcssFromUSBRadio
+		}
+		if v := r.FormValue("carrierfrom"); v != "" {
+			if !validCarrierFrom[v] {
+				s.renderNodeEditErrorReq(w, r, num, "Unrecognized carrier-detect source")
+				return
+			}
+			updates["carrierfrom"] = v
+		}
+		if v := r.FormValue("ctcssfrom"); v != "" {
+			if !validCtcssFrom[v] {
+				s.renderNodeEditErrorReq(w, r, num, "Unrecognized CTCSS-decode source")
+				return
+			}
+			updates["ctcssfrom"] = v
+		}
+
 		if strings.HasPrefix(rxchannel, "Radio/") {
 			if v := r.FormValue("driverduplex"); v != "" {
 				if !validDriverDuplex[v] {

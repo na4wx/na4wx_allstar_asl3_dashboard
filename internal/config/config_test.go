@@ -72,6 +72,39 @@ func TestLoadNodePopulatesRadioFromSimpleusbConf(t *testing.T) {
 	if view.Radio.DriverDuplex != "" {
 		t.Errorf("Radio.DriverDuplex = %q, want empty (simpleusb has no driver-level duplex)", view.Radio.DriverDuplex)
 	}
+	// Confirmed against the real node's own simpleusb.conf: carrierfrom
+	// and ctcssfrom both default to usbinvert there.
+	if view.Radio.CarrierFrom != "usbinvert" {
+		t.Errorf("Radio.CarrierFrom = %q, want \"usbinvert\"", view.Radio.CarrierFrom)
+	}
+	if view.Radio.CtcssFrom != "usbinvert" {
+		t.Errorf("Radio.CtcssFrom = %q, want \"usbinvert\"", view.Radio.CtcssFrom)
+	}
+}
+
+func TestLoadNodePopulatesCarrierFromForUsbradio(t *testing.T) {
+	// Confirmed against the real node's own usbradio.conf: carrierfrom
+	// and ctcssfrom both default to dsp there -- this is the setting
+	// that (along with the corresponding channel driver actually being
+	// loaded, see modules.go) determines whether RX audio detection
+	// uses a hardware COR line or software/DSP-based signal analysis.
+	store := tempStoreFromFixtures(t)
+	if err := store.UpdateNodeSettings("1999", map[string]string{"rxchannel": "Radio/1999"}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := store.LoadNode("1999")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Radio == nil || view.Radio.Driver != "usbradio" {
+		t.Fatalf("view.Radio = %+v", view.Radio)
+	}
+	if view.Radio.CarrierFrom != "dsp" {
+		t.Errorf("Radio.CarrierFrom = %q, want \"dsp\"", view.Radio.CarrierFrom)
+	}
+	if view.Radio.CtcssFrom != "dsp" {
+		t.Errorf("Radio.CtcssFrom = %q, want \"dsp\"", view.Radio.CtcssFrom)
+	}
 }
 
 func TestLoadNodeUnknownNodeErrors(t *testing.T) {

@@ -41,6 +41,34 @@
       <label for="txmixbset">Tx level, channel B (txmixbset)</label>
       <input type="number" id="txmixbset" name="txmixbset" min="0" max="999" value="{{.View.Radio.TxMixBSet}}">
     </div>
+    <div class="field">
+      <label for="carrierfrom">Carrier detect source</label>
+      <select id="carrierfrom" name="carrierfrom">
+        <option value="no" {{if eq .View.Radio.CarrierFrom "no"}}selected{{end}}>no — no carrier detection at all</option>
+        <option value="usb" {{if eq .View.Radio.CarrierFrom "usb"}}selected{{end}}>usb — hardware COR line on the USB fob (active high)</option>
+        <option value="usbinvert" {{if eq .View.Radio.CarrierFrom "usbinvert"}}selected{{end}}>usbinvert — hardware COR line, inverted (active low)</option>
+        {{if eq .View.Radio.Driver "usbradio"}}
+        <option value="dsp" {{if eq .View.Radio.CarrierFrom "dsp"}}selected{{end}}>dsp — from RX audio using DSP analysis (no hardware line needed)</option>
+        <option value="vox" {{if eq .View.Radio.CarrierFrom "vox"}}selected{{end}}>vox — voice-activated from RX audio</option>
+        {{end}}
+        <option value="pp" {{if eq .View.Radio.CarrierFrom "pp"}}selected{{end}}>pp — parallel port (active high)</option>
+        <option value="ppinvert" {{if eq .View.Radio.CarrierFrom "ppinvert"}}selected{{end}}>ppinvert — parallel port, inverted (active low)</option>
+      </select>
+      <p class="hint">Where this node decides a signal is present. usb/usbinvert need a real, correctly-wired hardware COR line — if RX never seems to work no matter which of those two you pick, the interface may not have one at all, and{{if eq .View.Radio.Driver "usbradio"}} "dsp" (software-based, no hardware line needed) is worth trying instead{{else}} switching the radio interface above to USBRadio unlocks "dsp" (software-based) detection{{end}}.</p>
+    </div>
+    <div class="field">
+      <label for="ctcssfrom">CTCSS decode source</label>
+      <select id="ctcssfrom" name="ctcssfrom">
+        <option value="no" {{if eq .View.Radio.CtcssFrom "no"}}selected{{end}}>no — no CTCSS decoding (carrier squelch only)</option>
+        <option value="usb" {{if eq .View.Radio.CtcssFrom "usb"}}selected{{end}}>usb — hardware CTCSS line on the USB fob (active high)</option>
+        <option value="usbinvert" {{if eq .View.Radio.CtcssFrom "usbinvert"}}selected{{end}}>usbinvert — hardware CTCSS line, inverted (active low)</option>
+        {{if eq .View.Radio.Driver "usbradio"}}
+        <option value="dsp" {{if eq .View.Radio.CtcssFrom "dsp"}}selected{{end}}>dsp — decoded from RX audio (needs rxdemod = flat)</option>
+        {{end}}
+        <option value="pp" {{if eq .View.Radio.CtcssFrom "pp"}}selected{{end}}>pp — parallel port (active high)</option>
+        <option value="ppinvert" {{if eq .View.Radio.CtcssFrom "ppinvert"}}selected{{end}}>ppinvert — parallel port, inverted (active low)</option>
+      </select>
+    </div>
     {{if eq .View.Radio.Driver "usbradio"}}
     <div class="field">
       <label for="driverduplex">Audio driver duplex</label>
