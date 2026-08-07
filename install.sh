@@ -118,10 +118,137 @@ if [ "$need_go_install" = "1" ]; then
 	fi
 fi
 
+# --- Piper (text-to-speech, for the "Create from text" sound generator) ----
+#
+# Piper's current, actively maintained project (OHF-Voice/piper1-gpl) only
+# ships as a pip wheel with a different, incompatible "python3 -m piper -m
+# ... -f ..." CLI -- this app's internal/tts package already shells out to
+# the OLD project's (rhasspy/piper, archived) standalone
+# "piper --model ... --output_file ..." binary, confirmed against that
+# release specifically. That repo is frozen (no updates since Oct 2025),
+# but for an offline-only local tool with no network exposure that's an
+# acceptable tradeoff -- same reasoning and same pinned release the
+# original HamVoIP app's install.sh used, proven there this session.
+#
+# ASL3 only targets amd64/arm64 (see the Go toolchain section above, which
+# already hard-errors on anything else) -- no 32-bit ARM case here, unlike
+# HamVoIP's own Pi Zero/1-inclusive install.sh.
+
+log "Checking Piper (text-to-speech)"
+
+PIPER_RELEASE_VERSION="2023.11.14-2"
+PIPER_INSTALL_DIR="/usr/local/lib/piper"
+PIPER_VOICES_DIR="/etc/asl3-gui/piper-voices"
+PIPER_VOICE="en_US-lessac-medium"
+PIPER_VOICE_PATH="en/en_US/lessac/medium/en_US-lessac-medium"
+
+PIPER_ARCH=""
+case "$(uname -m)" in
+	aarch64|arm64)
+		PIPER_ARCH="aarch64" ;;
+	x86_64|amd64)
+		PIPER_ARCH="x86_64" ;;
+	*)
+		log "Piper has no known build for $(uname -m) — skipping text-to-speech setup. The app will use espeak-ng as the fallback if it's installed."
+		;;
+esac
+
+if [ -n "$PIPER_ARCH" ]; then
+	if [ -x "$PIPER_INSTALL_DIR/piper" ]; then
+		log "Piper already installed at $PIPER_INSTALL_DIR/piper"
+	else
+		log "Installing Piper ($PIPER_ARCH)"
+		TMP=$(mktemp -d)
+		if curl -fsSL -o "$TMP/piper.tar.gz" "https://github.com/rhasspy/piper/releases/download/$PIPER_RELEASE_VERSION/piper_linux_${PIPER_ARCH}.tar.gz"; then
+			# The tarball's own top-level directory is "piper/", which is
+			# also PIPER_INSTALL_DIR's basename -- extracting straight into
+			# its parent lands it exactly where it needs to be, no rename.
+			rm -rf "$PIPER_INSTALL_DIR"
+			tar -C "$(dirname "$PIPER_INSTALL_DIR")" -xzf "$TMP/piper.tar.gz"
+			# piper needs the .so files and espeak-ng-data/ that ship
+			# alongside it in the same directory (it locates them via an
+			# $ORIGIN-relative rpath, confirmed present in the binary) -- so
+			# this symlinks just the executable, not a copy, keeping it next
+			# to everything it depends on.
+			ln -sf "$PIPER_INSTALL_DIR/piper" /usr/local/bin/piper
+			log "Installed Piper to $PIPER_INSTALL_DIR (symlinked to /usr/local/bin/piper)"
+		else
+			warn "couldn't download Piper (offline?) — skipping. Re-run this script with network access to pick it up, or set up text-to-speech manually later."
+		fi
+		rm -rf "$TMP"
+	fi
+
+	PIPER_READY=0
+	if [ -x "$PIPER_INSTALL_DIR/piper" ]; then
+		set +e
+		PIPER_CHECK_OUTPUT=$("$PIPER_INSTALL_DIR/piper" --help 2>&1)
+		PIPER_CHECK_STATUS=$?
+		set -e
+		if [ "$PIPER_CHECK_STATUS" = "0" ]; then
+			PIPER_READY=1
+		else
+			warn "Piper is installed but cannot run on this system; skipping text-to-speech voice setup."
+			log "Piper check output: ${PIPER_CHECK_OUTPUT//$'\n'/ | }"
+			log "The app will fall back to espeak-ng for \"Create from text\" where available."
+		fi
+	fi
+
+	if [ "$PIPER_READY" = "1" ]; then
+		mkdir -p "$PIPER_VOICES_DIR"
+		if [ -f "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx" ]; then
+			log "Voice $PIPER_VOICE already downloaded"
+		else
+			log "Downloading default voice: $PIPER_VOICE"
+			# Staged as .tmp and only renamed into place once both files
+			# succeed, so a connection drop mid-download can never leave a
+			# half-downloaded .onnx file that a re-run would mistake for
+			# "already downloaded".
+			if curl -fsSL -o "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx" \
+				&& curl -fsSL -o "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json" "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx.json"; then
+				mv "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx"
+				log "Downloaded voice $PIPER_VOICE to $PIPER_VOICES_DIR (more voices at https://huggingface.co/rhasspy/piper-voices)"
+			else
+				rm -f "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json"
+				warn "couldn't download the default Piper voice (offline?) — the \"Create from text\" sound generator will show no voices until one is downloaded. Re-run this script with network access, or see https://huggingface.co/rhasspy/piper-voices"
+			fi
+		fi
+	fi
+fi
+
+# --- espeak-ng (text-to-speech fallback) ------------------------------------
+#
+# Installed unconditionally (cheap, small, in Debian's own repo) as a
+# same-page fallback for whenever Piper isn't installed/working above --
+# see internal/server/sounds.go's resolveTTSBackend, which already prefers
+# Piper and falls back to this automatically.
+
+log "Checking espeak-ng (text-to-speech fallback)"
+if command -v espeak-ng >/dev/null 2>&1; then
+	log "espeak-ng already installed"
+else
+	apt_install espeak-ng || warn "couldn't install espeak-ng — the \"Create from text\" sound generator will have no fallback if Piper isn't working"
+fi
+
+# --- sox (audio conversion) --------------------------------------------------
+#
+# Both a manual sound upload and "Create from text" (Piper/espeak-ng
+# output) go through internal/sounds.Store.Upload's sox conversion step
+# before landing in the sound library -- without it, generating a sound
+# succeeds but saving it fails with a clear "sox: executable file not
+# found" error rather than silently doing nothing, but it's cheap and in
+# Debian's own repo, so just install it upfront instead of making that
+# the first thing an operator hits.
+
+log "Checking sox (audio conversion for sound uploads and \"Create from text\")"
+if command -v sox >/dev/null 2>&1; then
+	log "sox already installed"
+else
+	apt_install sox || warn "couldn't install sox — sound file upload and \"Create from text\" saving will fail until it's installed"
+fi
+
 # TODO (later phases, per the project plan):
-#   - Piper (TTS) setup -- internal/tts is already ported, but install.sh
-#     doesn't yet fetch the piper binary/voice model on Debian.
-#   - SkywarnPlus setup -- internal/skywarnplus is ported, same gap.
+#   - SkywarnPlus setup -- internal/skywarnplus is ported, but install.sh
+#     doesn't yet fetch it.
 #   - NetworkManager verification -- internal/wifi's ASL3 port (Phase 4)
 #     will need this script to confirm NetworkManager is active, not
 #     install a competing network stack.
