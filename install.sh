@@ -12,18 +12,18 @@
 # a node's actual state before building that step.
 
 cat <<'EOF'
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║     ███╗   ██╗ █████╗ ██╗  ██╗██╗    ██╗██╗  ██╗         ║
-║     ████╗  ██║██╔══██╗██║  ██║██║    ██║╚██╗██╔╝         ║
-║     ██╔██╗ ██║███████║███████║██║ █╗ ██║ ╚███╔╝          ║
-║     ██║╚██╗██║██╔══██║╚════██║██║███╗██║ ██╔██╗          ║
-║     ██║ ╚████║██║  ██║     ██║╚███╔███╔╝██╔╝ ██╗         ║
-║     ╚═╝  ╚═══╝╚═╝  ╚═╝     ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝         ║
-║                                                          ║
-║     A L L S T A R   D A S H B O A R D   ( A S L 3 )      ║
-║                                                          ║
-╚══════════════════════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║       ███╗   ██╗ █████╗ ██╗  ██╗██╗    ██╗██╗  ██╗        ║
+║       ████╗  ██║██╔══██╗██║  ██║██║    ██║╚██╗██╔╝        ║
+║       ██╔██╗ ██║███████║███████║██║ █╗ ██║ ╚███╔╝         ║
+║       ██║╚██╗██║██╔══██║╚════██║██║███╗██║ ██╔██╗         ║
+║       ██║ ╚████║██║  ██║     ██║╚███╔███╔╝██╔╝ ██╗        ║
+║       ╚═╝  ╚═══╝╚═╝  ╚═╝     ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝        ║
+║                                                           ║
+║      A L L S T A R   D A S H B O A R D   ( A S L 3 )      ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
 EOF
 
 set -euo pipefail
@@ -63,6 +63,21 @@ cd "$REPO_ROOT"
 apt_install() {
 	apt-get update -qq
 	apt-get install -y --no-install-recommends "$@"
+}
+
+# fetch URL OUTPUT_PATH -- every network download in this script goes
+# through here rather than a bare `curl -fsSL`, for two reasons hit for
+# real on a slow/stalled connection: silent (-s) mode shows nothing at
+# all while it runs, so a slow-but-working download and a truly wedged
+# connection look identical from the terminal; and plain curl has no
+# timeout of its own, so a connection that stalls mid-transfer (a
+# firewall silently dropping packets, a proxy that never completes the
+# handshake) hangs forever with no way to tell it's stuck versus just
+# slow. --connect-timeout bounds only the initial connection;
+# --max-time bounds the whole transfer, generous enough for a large
+# file (the Piper voice model below) over a slow connection.
+fetch() {
+	curl -fL --connect-timeout 15 --max-time 300 -o "$2" "$1"
 }
 
 # --- Go toolchain ---------------------------------------------------------
@@ -107,7 +122,7 @@ if [ "$need_go_install" = "1" ]; then
 		esac
 		TARBALL="go${GO_TARBALL_VERSION}.linux-${GOARCH_TARBALL}.tar.gz"
 		TMP=$(mktemp -d)
-		curl -fsSL -o "$TMP/$TARBALL" "https://go.dev/dl/$TARBALL"
+		fetch "https://go.dev/dl/$TARBALL" "$TMP/$TARBALL"
 		rm -rf /usr/local/go
 		tar -C /usr/local -xzf "$TMP/$TARBALL"
 		rm -rf "$TMP"
@@ -159,7 +174,7 @@ if [ -n "$PIPER_ARCH" ]; then
 	else
 		log "Installing Piper ($PIPER_ARCH)"
 		TMP=$(mktemp -d)
-		if curl -fsSL -o "$TMP/piper.tar.gz" "https://github.com/rhasspy/piper/releases/download/$PIPER_RELEASE_VERSION/piper_linux_${PIPER_ARCH}.tar.gz"; then
+		if fetch "https://github.com/rhasspy/piper/releases/download/$PIPER_RELEASE_VERSION/piper_linux_${PIPER_ARCH}.tar.gz" "$TMP/piper.tar.gz"; then
 			# The tarball's own top-level directory is "piper/", which is
 			# also PIPER_INSTALL_DIR's basename -- extracting straight into
 			# its parent lands it exactly where it needs to be, no rename.
@@ -203,8 +218,8 @@ if [ -n "$PIPER_ARCH" ]; then
 			# succeed, so a connection drop mid-download can never leave a
 			# half-downloaded .onnx file that a re-run would mistake for
 			# "already downloaded".
-			if curl -fsSL -o "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx" \
-				&& curl -fsSL -o "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json" "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx.json"; then
+			if fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" \
+				&& fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx.json" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json"; then
 				mv "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx"
 				log "Downloaded voice $PIPER_VOICE to $PIPER_VOICES_DIR (more voices at https://huggingface.co/rhasspy/piper-voices)"
 			else
