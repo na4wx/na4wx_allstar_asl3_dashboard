@@ -1,15 +1,11 @@
 #!/bin/bash
 # Run this ON THE NODE, as root, from inside the cloned repo (Debian --
-# ASL3's OS). Makes sure the tools needed to build this project are
+# ASL3's OS). Optionally bootstraps ASL3 itself if it isn't already
+# present, makes sure the tools needed to build this project are
 # installed, pulls the latest code if there is any, then builds
 # natively and redeploys via deploy/install.sh.
 #
 # Usage: sudo ./install.sh
-#
-# TODO (Phase 7, per the project plan): offer to install ASL3 itself
-# first if it isn't already present, before any of the steps below --
-# not yet implemented. Verify the real apt repo/package names against
-# a node's actual state before building that step.
 
 cat <<'EOF'
 ╔═══════════════════════════════════════════════════════════╗
@@ -79,6 +75,78 @@ apt_install() {
 fetch() {
 	curl -fL --connect-timeout 15 --max-time 300 -o "$2" "$1"
 }
+
+# --- ASL3 (AllStarLink 3) itself, if not already present --------------------
+#
+# This dashboard configures an ASL3 node; it doesn't require ASL3 to live on
+# this exact machine unless this IS meant to be that node. Bonus feature per
+# the project plan: offer to install ASL3 itself first, gated behind an
+# explicit yes/no prompt like the SkywarnPlus section below -- a much bigger,
+# more consequential action (adds a third-party apt repo, replaces/installs
+# Asterisk, builds a DAHDI kernel module via dkms) than anything else this
+# script does, so it never runs silently.
+#
+# Real repo/package names confirmed against AllStarLink's own install docs
+# (https://allstarlink.github.io/install/debian/install/): a one-time .deb
+# adds the repo (a separate signed package per Debian release, since it
+# carries the release-specific apt source line + GPG key), then the "asl3"
+# metapackage pulls in asl3-asterisk(-config/-doc/-modules), the DAHDI
+# kernel module (dahdi-dkms/dahdi-linux/dahdi-source) and its build tooling,
+# and asl3-menu.
+
+ASL3_REPO_PKG_BASE="https://repo.allstarlink.org/public/asl-apt-repos"
+
+if dpkg -s asl3-asterisk >/dev/null 2>&1; then
+	log "ASL3 (asl3-asterisk) already installed"
+elif [ ! -t 0 ]; then
+	log "Skipping ASL3 install prompt (no interactive terminal attached)"
+else
+	echo
+	echo "AllStarLink 3 (ASL3 -- Asterisk with app_rpt) doesn't appear to be installed"
+	echo "on this system. This dashboard only needs to run somewhere that can reach"
+	echo "an ASL3 node's /etc/asterisk -- normally that's this same machine."
+	read -r -p "Install ASL3 now (adds AllStarLink's apt repo, installs the asl3 metapackage)? [y/N] " ASL3_ANSWER
+	case "$ASL3_ANSWER" in
+		[yY]|[yY][eE][sS])
+			CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+			case "$CODENAME" in
+				bookworm) ASL3_REPO_SUFFIX="deb12_all.deb" ;;
+				trixie)   ASL3_REPO_SUFFIX="deb13_all.deb" ;;
+				*)
+					warn "ASL3's apt repo only publishes packages for Debian 12 (bookworm) and 13 (trixie); this system reports \"$CODENAME\" -- skipping ASL3 install. See https://allstarlink.github.io/install/debian/install/ to install it manually."
+					ASL3_REPO_SUFFIX=""
+					;;
+			esac
+			if [ -n "$ASL3_REPO_SUFFIX" ]; then
+				log "Adding AllStarLink's apt repo ($CODENAME)"
+				TMP=$(mktemp -d)
+				REPO_DEB="asl-apt-repos.$ASL3_REPO_SUFFIX"
+				if fetch "$ASL3_REPO_PKG_BASE.$ASL3_REPO_SUFFIX" "$TMP/$REPO_DEB" && dpkg -i "$TMP/$REPO_DEB"; then
+					apt-get update -qq
+					log "Installing the asl3 metapackage (this builds the DAHDI kernel module via dkms and can take several minutes)"
+					# Deliberately not apt_install (which strips
+					# --no-install-recommends) -- the asl3 metapackage's own
+					# DAHDI/build-tooling pieces need to actually land, not
+					# just its hard Depends.
+					if apt-get install -y asl3; then
+						log "Installed ASL3"
+						if dpkg -s asl3-asterisk >/dev/null 2>&1; then
+							warn "ASL3 was just installed -- if the DAHDI kernel module (dahdi-dkms) failed to load, a reboot usually fixes it. Check with: systemctl status asterisk"
+						fi
+					else
+						warn "installing the asl3 metapackage failed -- check apt's own output above, or see https://allstarlink.github.io/install/debian/install/"
+					fi
+				else
+					warn "couldn't add AllStarLink's apt repo (offline, or dpkg -i failed) -- re-run this script with network access, or see https://allstarlink.github.io/install/debian/install/"
+				fi
+				rm -rf "$TMP"
+			fi
+			;;
+		*)
+			log "Skipping ASL3 install"
+			;;
+	esac
+fi
 
 # --- Go toolchain ---------------------------------------------------------
 
@@ -278,11 +346,79 @@ else
 	apt_install sox || warn "couldn't install sox — sound file upload and \"Create from text\" saving will fail until it's installed"
 fi
 
+# --- SkywarnPlus (optional weather-alert automation) ------------------------
+#
+# A third-party, no-longer-maintained tool
+# (https://github.com/Mason10198/SkywarnPlus) that announces National
+# Weather Service alerts over the repeater. Unlike everything else this
+# script sets up, this is entirely optional -- not everyone wants it -- so
+# it's the one thing here (besides ASL3 itself, above) that asks first
+# rather than just doing it.
+#
+# Installing it from here (rather than a button in the running web app)
+# matches its own upstream installer's own shape: the real swp-install is
+# heavily interactive and was never meant to be triggered from a web
+# server's HTTP handler. What's below reimplements only the non-interactive
+# parts it actually needs (dependencies, download, cron); the app's own
+# SkywarnPlus tab configures whatever this installs (county codes, which
+# node announces, feature on/off toggles) via deploy/sky_configure.py and
+# SkywarnPlus's own SkyControl.py -- see internal/skywarnplus's package doc.
+#
+# Adapted from the original HamVoIP app's own install.sh for Debian/apt
+# instead of Arch/pacman, and for ASL3's modern Debian 12/13 Python 3
+# (which needs none of that script's HamVoIP-specific "bootstrap pip for a
+# very outdated Python 3.5" fallback -- just python3-pip plus
+# --break-system-packages, since Debian 12+ blocks a bare pip install
+# outside a venv per PEP 668).
+
+SKYWARN_DIR="/usr/local/bin/SkywarnPlus"
+SKYWARN_RELEASE_VERSION="v0.8.1"
+
+if [ -x "$SKYWARN_DIR/SkywarnPlus.py" ]; then
+	log "SkywarnPlus already installed at $SKYWARN_DIR"
+elif [ ! -t 0 ]; then
+	log "Skipping SkywarnPlus prompt (no interactive terminal attached)"
+else
+	echo
+	read -r -p "Install SkywarnPlus weather-alert automation? [y/N] " SKYWARN_ANSWER
+	case "$SKYWARN_ANSWER" in
+		[yY]|[yY][eE][sS])
+			log "Installing SkywarnPlus dependencies"
+			apt_install ffmpeg unzip python3-pip
+
+			if pip3 install --quiet --break-system-packages requests python-dateutil pydub ruamel.yaml; then
+				log "Installed Python dependencies via pip3"
+			else
+				warn "couldn't install Python dependencies for SkywarnPlus -- install them manually: pip3 install --break-system-packages requests python-dateutil pydub ruamel.yaml (see https://github.com/Mason10198/SkywarnPlus#installation)"
+			fi
+
+			log "Downloading SkywarnPlus $SKYWARN_RELEASE_VERSION"
+			TMP=$(mktemp -d)
+			if fetch "https://github.com/Mason10198/SkywarnPlus/releases/download/$SKYWARN_RELEASE_VERSION/SkywarnPlus.zip" "$TMP/SkywarnPlus.zip"; then
+				rm -rf "$SKYWARN_DIR"
+				unzip -q "$TMP/SkywarnPlus.zip" -d "$(dirname "$SKYWARN_DIR")"
+				chmod +x "$SKYWARN_DIR"/*.py
+
+				cp "$REPO_ROOT/deploy/sky_configure.py" "$SKYWARN_DIR/"
+				chmod +x "$SKYWARN_DIR/sky_configure.py"
+
+				PYTHON3_BIN=$(command -v python3 || echo /usr/bin/python3)
+				echo "* * * * * root $PYTHON3_BIN $SKYWARN_DIR/SkywarnPlus.py" > /etc/cron.d/SkywarnPlus
+				log "Installed SkywarnPlus to $SKYWARN_DIR, scheduled via /etc/cron.d/SkywarnPlus (every 60s)"
+				log "Finish setup on the node's SkywarnPlus tab: pick your county codes and register this node."
+			else
+				warn "couldn't download SkywarnPlus (offline?) -- re-run this script with network access to finish installing it."
+			fi
+			rm -rf "$TMP"
+			;;
+		*)
+			log "Skipping SkywarnPlus"
+			;;
+	esac
+fi
+
 # TODO (later phases, per the project plan):
-#   - SkywarnPlus setup -- internal/skywarnplus is ported, but install.sh
-#     doesn't yet fetch it.
-#   - NetworkManager verification -- internal/wifi's ASL3 port (Phase 4)
-#     will need this script to confirm NetworkManager is active, not
+#   - NetworkManager verification -- confirm NetworkManager is active, not
 #     install a competing network stack.
 
 # --- pull latest ---------------------------------------------------------
@@ -324,5 +460,15 @@ if [ "${#WARNINGS[@]}" -gt 0 ]; then
 	echo
 fi
 
+# Same check the install-decision step above uses ([ -x
+# ".../SkywarnPlus.py" ], not just [ -d "$SKYWARN_DIR" ]) -- so this only
+# offers the "re-run to install it" tip when it's actually not installed
+# (declined, no interactive terminal to ask, or a failed download), never
+# when it's already there.
+if [ -x "$SKYWARN_DIR/SkywarnPlus.py" ]; then
+	echo "Finish SkywarnPlus setup on the node's SkywarnPlus tab (pick your county codes and register this node)."
+else
+	echo "Tip: SkywarnPlus (weather-alert automation) was skipped -- re-run this script anytime to install it."
+fi
 echo "Re-run this script anytime to update to the latest version from git."
 echo
