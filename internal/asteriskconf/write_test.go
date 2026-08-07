@@ -146,6 +146,72 @@ func TestSetValuesPreservesFileModeAndTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestSetNthValueInSectionRewritesByPosition(t *testing.T) {
+	path := writeTempConf(t, `[extensions](!)
+exten => 1,1,Answer()
+exten => 1,2,Playback(demo)
+exten => 2,1,Answer()
+`)
+	ok, err := SetNthValueInSection(path, "extensions", 1, "2,Playback(other)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[extensions](!)
+exten => 1,1,Answer()
+exten => 2,Playback(other)
+exten => 2,1,Answer()
+`
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestSetNthValueInSectionOutOfRangeIsNotAnError(t *testing.T) {
+	path := writeTempConf(t, `[1999](node-main)
+rxchannel = SimpleUSB/1999
+`)
+	ok, err := SetNthValueInSection(path, "1999", 5, "ignored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("ok = true, want false for an out-of-range index")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "rxchannel = SimpleUSB/1999") {
+		t.Errorf("file was modified despite out-of-range index: %s", got)
+	}
+}
+
+func TestSetNthValueInSectionNeverTouchesOtherSections(t *testing.T) {
+	path := writeTempConf(t, `[1999](node-main)
+rxchannel = SimpleUSB/1999
+
+[2000](node-main)
+rxchannel = SimpleUSB/2000
+`)
+	if _, err := SetNthValueInSection(path, "1999", 0, "Radio/1999"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "rxchannel = SimpleUSB/2000") {
+		t.Errorf("[2000] should be untouched:\n%s", got)
+	}
+}
+
 func TestSetValuesRoundTripsThroughParseAndResolve(t *testing.T) {
 	path := writeTempConf(t, `[node-main](!)
 duplex = 2

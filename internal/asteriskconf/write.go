@@ -67,6 +67,34 @@ func SetValues(path, sectionName string, updates map[string]string) error {
 	})
 }
 
+// SetNthValueInSection rewrites the value of the Nth key/value line
+// (0-indexed, in file order) within sectionName's own body -- for the
+// raw config editor, which addresses a line by its position rather than
+// its key name (matching the order Section.Pairs/Resolved.Pairs already
+// enumerate a section in), since a section can legitimately repeat the
+// same key name (e.g. multiple "allow =>" lines) with no other way to
+// address one specific occurrence. Returns ok=false, nil error if n is
+// out of range for this section; never appends a new line, never
+// touches any other section.
+func SetNthValueInSection(path, sectionName string, n int, newValue string) (ok bool, err error) {
+	err = editFile(path, sectionName, func(lines []string, start, end int) []string {
+		count := 0
+		for i := start; i < end; i++ {
+			if _, _, _, kvOK := parseKeyValue(stripComment(lines[i])); !kvOK {
+				continue
+			}
+			if count == n {
+				lines[i] = rewriteValueLine(lines[i], newValue)
+				ok = true
+				break
+			}
+			count++
+		}
+		return lines
+	})
+	return ok, err
+}
+
 // SetRepeatingValue finds, within the named section, the "key => value" (or
 // "key = value") line whose value starts with valuePrefix, and replaces
 // its value with newValue -- preserving the line's original operator and
