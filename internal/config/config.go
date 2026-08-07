@@ -87,6 +87,23 @@ type NodeView struct {
 
 	// Radio is non-nil only when Interface is "SimpleUSB" or "USBRadio".
 	Radio *RadioView
+
+	// Telemetry is the name of the rpt.conf section this node's courtesy
+	// tones/status audio resolve from (usually the shared "telemetry"
+	// section every node points at by default via node-main's own
+	// "telemetry = telemetry", confirmed on a real node -- a node can
+	// override this to a different section for its own independent set).
+	Telemetry string
+
+	// UnlinkedCT/RemoteCT/LinkUnkeyCT are node-main-level fields (same
+	// override tier as RxChannel/Duplex above, NOT part of the Telemetry
+	// section) naming which courtesy-tone key (ct1-ct8) plays in each
+	// situation -- confirmed on a real node's own node-main template.
+	// Empty means "use app_rpt's own built-in default for that
+	// situation."
+	UnlinkedCT  string
+	RemoteCT    string
+	LinkUnkeyCT string
 }
 
 // ListNodes returns the node numbers of every locally-configured node in
@@ -158,6 +175,13 @@ func (s *Store) LoadNode(node string) (*NodeView, error) {
 	view := &NodeView{Node: node}
 	view.RxChannel, _ = r.Value("rxchannel")
 	view.Duplex, _ = r.Value("duplex")
+	view.Telemetry, _ = r.Value("telemetry")
+	if view.Telemetry == "" {
+		view.Telemetry = "telemetry"
+	}
+	view.UnlinkedCT, _ = r.Value("unlinkedct")
+	view.RemoteCT, _ = r.Value("remotect")
+	view.LinkUnkeyCT, _ = r.Value("linkunkeyct")
 
 	switch {
 	case strings.HasPrefix(view.RxChannel, "SimpleUSB/"):

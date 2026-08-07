@@ -149,6 +149,8 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/registration", s.requireAuth(s.handleNodeRegistrationUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/sa818/apply", s.requireAuth(s.handleNodeSA818Apply))
+	s.mux.HandleFunc("POST /nodes/{node}/courtesy-tones", s.requireAuth(s.handleNodeCourtesyToneUpdate))
+	s.mux.HandleFunc("POST /nodes/{node}/telemetry", s.requireAuth(s.handleNodeTelemetryUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/upload", s.requireAuth(s.handleNodeSoundUpload))
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/tts", s.requireAuth(s.handleNodeSoundTTS))
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/tts/preview", s.requireAuth(s.handleNodeSoundTTSPreview))
@@ -377,6 +379,12 @@ type nodeEditData struct {
 	TTSEngine  string
 	TTSNotice  string
 	TTSError   string
+
+	// Sounds tab: courtesy-tone/telemetry editor -- see
+	// populateNodeTelemetry.
+	TelemetrySect string
+	TelemetryRows []telemetryRow
+	CTKeys        []string
 }
 
 func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
@@ -403,6 +411,7 @@ func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error)
 		}
 	}
 	s.populateNodeSounds(&data)
+	s.populateNodeTelemetry(&data)
 	return data, nil
 }
 

@@ -769,3 +769,68 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
 }
 .tabs button:hover { color: var(--text); background: var(--surface-2); }
 .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Segmented two-way toggle (e.g. "Tone" vs "Sound file" on a courtesy
+   tone/telemetry entry, or the WX courtesy-tone form). Wraps
+   data-type-toggle radios the same way .tabs wraps buttons -- a pill
+   group, not a bare radio+label list, so the current choice reads at a
+   glance instead of blending into the surrounding field labels. Uses
+   :has() (broadly supported since 2023) rather than a JS-toggled class,
+   since the native :checked state is already the single source of truth
+   app.js's own toggle logic reads from. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  width: fit-content;
+}
+.segmented label {
+  position: relative;
+  margin: 0;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--text-dim);
+  cursor: pointer;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.segmented label:not(:last-child) { border-right: 1px solid var(--border-strong); }
+.segmented label:hover { background: var(--surface-2); color: var(--text); }
+.segmented label:has(input:checked) { background: var(--accent-soft); color: var(--accent); }
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* One courtesy-tone/telemetry entry on the Sounds & Tones tab --
+   replaces the old dense table (one giant row per entry, tone fields
+   and sound picker crammed into a single narrow cell) with a set of
+   self-contained cards, each with its own clear header and a segmented
+   toggle deciding which editor below it applies. */
+.tone-entry-list { display: flex; flex-direction: column; gap: 0.85rem; }
+.tone-entry {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 0.9rem 1.1rem;
+}
+.tone-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.tone-entry-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.tone-entry-key { font-size: 0.78rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.tone-entry-fields { display: flex; gap: 0.85rem; flex-wrap: wrap; }
+.tone-entry-fields .field { margin-bottom: 0; min-width: 100px; flex: 1; }
+.tone-entry-fields .field.sound-field { flex: 2; min-width: 220px; }

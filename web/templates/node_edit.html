@@ -6,7 +6,7 @@
   <button type="button" data-tab-target="setup">Setup</button>
   <button type="button" data-tab-target="radio">Radio</button>
   <button type="button" data-tab-target="network">Allstar Network</button>
-  <button type="button" data-tab-target="sounds">Sounds</button>
+  <button type="button" data-tab-target="sounds">Sounds &amp; Tones</button>
 </div>
 
 <div data-tab-panel="setup">
@@ -244,6 +244,132 @@
 </div>
 
 <div data-tab-panel="sounds">
+<form method="post" action="/nodes/{{.View.Node}}/courtesy-tones">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">When each courtesy tone plays</h2>
+      {{template "help" "The ct1-ct8 entries below define several courtesy tones, but a tone name like \"ct2\" has no fixed meaning on its own — these three settings are what actually decide which tone plays in which situation. Choose \"(app_rpt default)\" to clear this node's own override and fall back to app_rpt's built-in behavior for that situation."}}
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="unlinkedct">When not connected to any node</label>
+          {{template "help" "Which courtesy tone plays while this node is idle, not connected to any other node."}}
+        </div>
+        <select id="unlinkedct" name="unlinkedct">
+          <option value="">(app_rpt default)</option>
+          {{range .CTKeys}}<option value="{{.}}" {{if eq . $.View.UnlinkedCT}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="remotect">When a remote base is connected</label>
+          {{template "help" "Which courtesy tone plays when a remote base radio is connected locally. Only relevant if this node controls a remote base."}}
+        </div>
+        <select id="remotect" name="remotect">
+          <option value="">(app_rpt default)</option>
+          {{range .CTKeys}}<option value="{{.}}" {{if eq . $.View.RemoteCT}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="linkunkeyct">When a connected node unkeys</label>
+          {{template "help" "Which courtesy tone plays when a station on a connected/linked node releases its transmitter."}}
+        </div>
+        <select id="linkunkeyct" name="linkunkeyct">
+          <option value="">(app_rpt default)</option>
+          {{range .CTKeys}}<option value="{{.}}" {{if eq . $.View.LinkUnkeyCT}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save courtesy tone assignments</button>
+    </div>
+  </div>
+</form>
+
+<form method="post" action="/nodes/{{.View.Node}}/telemetry">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Courtesy tones &amp; telemetry ({{.TelemetrySect}})</h2>
+      {{template "help" "Courtesy tones, status beeps, and sound-file playback for this node. Each entry either plays a tone (frequency/duration/amplitude) or a named sound file — pick which with the toggle on each entry, independent of how it's set up today."}}
+    </div>
+    {{if .TelemetryRows}}
+    <div class="tone-entry-list">
+      {{range .TelemetryRows}}
+      {{$key := .Key}}
+      {{$val := .Value}}
+      <div class="tone-entry">
+        <div class="tone-entry-header">
+          <div class="tone-entry-title">
+            {{if .Label}}<strong>{{.Label}}</strong>{{end}}
+            <span class="tone-entry-key">{{.Key}}</span>
+            {{if .Description}}{{template "help" .Description}}{{end}}
+          </div>
+          <div class="segmented">
+            <label><input type="radio" name="mode_{{$key}}" value="tone" data-type-toggle {{if or (eq .Mode "tone") (eq .Mode "tone-raw")}}checked{{end}}> Tone</label>
+            <label><input type="radio" name="mode_{{$key}}" value="sound" data-type-toggle {{if eq .Mode "sound"}}checked{{end}}> Sound file</label>
+          </div>
+        </div>
+
+        <div data-type-toggle-section="mode_{{$key}}:tone" {{if eq .Mode "sound"}}style="display:none"{{end}}>
+          {{if eq .Mode "tone-raw"}}
+          <input type="text" name="raw_{{$key}}" value="{{$val}}">
+          <div class="hint">Multi-part tone — edit as raw text (freq1,freq2,duration,amplitude per part).</div>
+          {{else}}
+          <div class="tone-entry-fields">
+            <div class="field">
+              <label for="tone_{{$key}}_freq1">Freq 1 (Hz)</label>
+              <input type="number" id="tone_{{$key}}_freq1" name="tone_{{$key}}_freq1" value="{{.Tone.Freq1}}">
+            </div>
+            <div class="field">
+              <label for="tone_{{$key}}_freq2">Freq 2 (Hz)</label>
+              <input type="number" id="tone_{{$key}}_freq2" name="tone_{{$key}}_freq2" value="{{.Tone.Freq2}}">
+            </div>
+            <div class="field">
+              <label for="tone_{{$key}}_duration">Duration (ms)</label>
+              <input type="number" id="tone_{{$key}}_duration" name="tone_{{$key}}_duration" value="{{.Tone.DurationMS}}">
+            </div>
+            <div class="field">
+              <label for="tone_{{$key}}_amplitude">Amplitude</label>
+              <input type="number" id="tone_{{$key}}_amplitude" name="tone_{{$key}}_amplitude" value="{{.Tone.Amplitude}}">
+            </div>
+          </div>
+          {{end}}
+        </div>
+
+        <div data-type-toggle-section="mode_{{$key}}:sound" {{if ne .Mode "sound"}}style="display:none"{{end}}>
+          <div class="tone-entry-fields">
+            <div class="field sound-field">
+              <label for="raw_{{$key}}_select">Sound file</label>
+              {{if eq .Mode "sound"}}
+              {{$found := false}}
+              {{range $.SoundFiles}}{{if eq .Ref $val}}{{$found = true}}{{end}}{{end}}
+              <select id="raw_{{$key}}_select" name="raw_{{$key}}">
+                {{if not $found}}<option value="{{$val}}" selected>{{$val}} (current — not in library)</option>{{end}}
+                {{range $.SoundFiles}}<option value="{{.Ref}}" {{if eq .Ref $val}}selected{{end}}>{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+              </select>
+              {{else}}
+              <select id="raw_{{$key}}_select" name="raw_{{$key}}">
+                <option value="">Choose a sound file</option>
+                {{range $.SoundFiles}}<option value="{{.Ref}}">{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+              </select>
+              {{end}}
+            </div>
+          </div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="hint">No tones/audio entries found in this node's telemetry section.</p>
+    {{end}}
+    <div class="actions">
+      <button type="submit" class="primary">Save tones &amp; audio</button>
+    </div>
+  </div>
+</form>
+
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Custom sound files</h2>
