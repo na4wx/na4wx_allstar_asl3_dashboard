@@ -1,6 +1,6 @@
-// System page: hostname, Asterisk restart/reboot, the SA818/DRA818
-// radio-module programmer, and WiFi (scan/connect, plus the automatic
-// hotspot-fallback watchdog -- see internal/wifi's package doc).
+// System page: hostname, Asterisk restart/reboot, and WiFi (scan/connect,
+// plus the automatic hotspot-fallback watchdog -- see internal/wifi's
+// package doc).
 //
 // Deliberately NOT ported from the HamVoIP app's own system_settings.go:
 // static-IP editing (HamVoIP writes dhcpcd.conf directly; ASL3 uses
@@ -9,6 +9,12 @@
 // flat RadioDevices/EmptyRadioFiles model (doesn't map to ASL3's
 // per-node tune stanzas in usbradio.conf/simpleusb.conf -- see
 // internal/config), and Cloud Sync (deferred; see internal/cloudagent).
+//
+// SA818/DRA818 radio-module programming lives on the node edit page
+// instead (see sa818.go's handleNodeSA818Apply) -- it's this node's own
+// physical radio hardware, not a system-wide setting, and having it here
+// as a disconnected card left CTCSS configurable in two unrelated places
+// with nothing explaining they were related.
 package server
 
 import (
@@ -18,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"hamvoipconfiggui-asl3/internal/sa818"
 	"hamvoipconfiggui-asl3/internal/system"
 	"hamvoipconfiggui-asl3/internal/wifi"
 )
@@ -26,10 +31,6 @@ import (
 type systemPageData struct {
 	pageData
 	Hostname string
-
-	SA818Port    string
-	SA818Last    *sa818.LastApplied
-	CTCSSOptions []ctcssOption
 
 	WiFiAvailable     bool
 	WiFiBackendName   string
@@ -62,14 +63,6 @@ func (s *Server) renderSystemPageWithNetworks(w http.ResponseWriter, r *http.Req
 		pageData: pd,
 		Hostname: hostname,
 	}
-
-	data.SA818Port = s.sa818Port
-	if s.sa818StatePath != "" {
-		if last, err := sa818.LoadLast(s.sa818StatePath); err == nil {
-			data.SA818Last = last
-		}
-	}
-	data.CTCSSOptions = ctcssOptions()
 
 	s.populateSystemWiFi(ctx, &data)
 	if networks != nil {

@@ -18,6 +18,7 @@ import (
 
 	"hamvoipconfiggui-asl3/internal/auth"
 	"hamvoipconfiggui-asl3/internal/config"
+	"hamvoipconfiggui-asl3/internal/sa818"
 	"hamvoipconfiggui-asl3/internal/wifi"
 )
 
@@ -128,13 +129,13 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeEdit))
 	s.mux.HandleFunc("POST /nodes/{node}", s.requireAuth(s.handleNodeUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/sa818/apply", s.requireAuth(s.handleNodeSA818Apply))
 
 	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
 	s.mux.HandleFunc("POST /system/password", s.requireAuth(s.handleSystemPassword))
 	s.mux.HandleFunc("POST /system/restart-asterisk", s.requireAuth(s.handleSystemRestartAsterisk))
 	s.mux.HandleFunc("POST /system/reboot", s.requireAuth(s.handleSystemReboot))
-	s.mux.HandleFunc("POST /system/sa818/apply", s.requireAuth(s.handleSystemSA818Apply))
 	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
 	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
 }
@@ -328,6 +329,21 @@ type nodeEditData struct {
 	pageData
 	View         *config.NodeView
 	Registration config.Registration
+
+	// SA818/DRA818 radio-module programming, scoped to this node's own
+	// page since it's this node's physical radio hardware -- moved here
+	// from a standalone System-page card, which just left an operator
+	// setting CTCSS in two disconnected places (the module's own
+	// hardware CTCSS here, and Asterisk's own ctcssfrom on this same
+	// page) with no indication they were related, let alone that the
+	// module-level one already made the Asterisk-level one redundant
+	// (the module simply won't pass audio through at all unless its own
+	// CTCSS requirement is met, so there's nothing left for Asterisk to
+	// independently verify) -- see this file's own handleNodeUpdate,
+	// which no longer has a ctcssfrom field at all for that reason.
+	SA818Port    string
+	SA818Last    *sa818.LastApplied
+	CTCSSOptions []ctcssOption
 }
 
 func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
@@ -346,7 +362,14 @@ func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error)
 			}
 		}
 	}
-	return nodeEditData{pageData: pd, View: view, Registration: reg}, nil
+
+	data := nodeEditData{pageData: pd, View: view, Registration: reg, SA818Port: s.sa818Port, CTCSSOptions: ctcssOptions()}
+	if s.sa818StatePath != "" {
+		if last, err := sa818.LoadLast(s.sa818StatePath); err == nil {
+			data.SA818Last = last
+		}
+	}
+	return data, nil
 }
 
 func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
@@ -362,15 +385,21 @@ func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
 var validDuplex = map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true}
 var validDriverDuplex = map[string]bool{"0": true, "1": true}
 
-// validFromSimpleUSB is SimpleUSB's own real option set for both
-// carrierfrom and ctcssfrom, confirmed against simpleusb.conf's own
-// comments on a real node. USBRadio's option sets differ (it adds dsp,
-// and carrierfrom-only adds vox) -- confirmed against usbradio.conf's
-// own comments; see validCarrierFromUSBRadio/validCtcssFromUSBRadio.
-var validFromSimpleUSB = map[string]bool{"no": true, "usb": true, "usbinvert": true, "pp": true, "ppinvert": true}
+// validCarrierFromSimpleUSB is SimpleUSB's own real option set for
+// carrierfrom, confirmed against simpleusb.conf's own comments on a real
+// node. USBRadio's option set differs (it adds dsp and vox) -- confirmed
+// against usbradio.conf's own comments; see validCarrierFromUSBRadio.
+//
+// There's no equivalent ctcssfrom field here: CTCSS is set once, on the
+// SA818/DRA818 module itself (this node's own SA818 card, further down
+// this page) -- the module simply won't pass audio through at all
+// unless its own CTCSS requirement is met, so an independent
+// Asterisk-side ctcssfrom check has nothing left to verify. An earlier
+// version of this page exposed both, in two disconnected places, with
+// nothing explaining they were related.
+var validCarrierFromSimpleUSB = map[string]bool{"no": true, "usb": true, "usbinvert": true, "pp": true, "ppinvert": true}
 
 var validCarrierFromUSBRadio = map[string]bool{"no": true, "usb": true, "usbinvert": true, "dsp": true, "vox": true, "pp": true, "ppinvert": true}
-var validCtcssFromUSBRadio = map[string]bool{"no": true, "usb": true, "usbinvert": true, "dsp": true, "pp": true, "ppinvert": true}
 
 func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 	num := r.PathValue("node")
@@ -416,9 +445,9 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		validCarrierFrom, validCtcssFrom := validFromSimpleUSB, validFromSimpleUSB
+		validCarrierFrom := validCarrierFromSimpleUSB
 		if strings.HasPrefix(rxchannel, "Radio/") {
-			validCarrierFrom, validCtcssFrom = validCarrierFromUSBRadio, validCtcssFromUSBRadio
+			validCarrierFrom = validCarrierFromUSBRadio
 		}
 		if v := r.FormValue("carrierfrom"); v != "" {
 			if !validCarrierFrom[v] {
@@ -426,13 +455,6 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			updates["carrierfrom"] = v
-		}
-		if v := r.FormValue("ctcssfrom"); v != "" {
-			if !validCtcssFrom[v] {
-				s.renderNodeEditErrorReq(w, r, num, "Unrecognized CTCSS-decode source")
-				return
-			}
-			updates["ctcssfrom"] = v
 		}
 
 		if strings.HasPrefix(rxchannel, "Radio/") {

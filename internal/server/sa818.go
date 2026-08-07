@@ -97,7 +97,12 @@ func formatSA818Freq(raw string) (string, error) {
 	return strconv.FormatFloat(f, 'f', 4, 64), nil
 }
 
-func (s *Server) handleSystemSA818Apply(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleNodeSA818Apply(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	if _, err := s.cfg.LoadNode(num); err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -105,7 +110,7 @@ func (s *Server) handleSystemSA818Apply(w http.ResponseWriter, r *http.Request) 
 
 	settings, ferr := sa818SettingsFromForm(r)
 	if ferr != "" {
-		s.renderSystemPage(w, r, flash("error", ferr))
+		s.renderNodeEditErrorReq(w, r, num, ferr)
 		return
 	}
 
@@ -123,12 +128,17 @@ func (s *Server) handleSystemSA818Apply(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err != nil {
-		s.renderSystemPage(w, r, flash("error", "Could not reach the radio module: "+err.Error()))
+		s.renderNodeEditErrorReq(w, r, num, "Could not reach the radio module: "+err.Error())
 		return
 	}
 	if !ok {
-		s.renderSystemPage(w, r, flash("error", "The radio module rejected these settings — see the raw transcript below the form for details."))
+		s.renderNodeEditErrorReq(w, r, num, "The radio module rejected these settings — see the raw transcript below the form for details.")
 		return
 	}
-	s.renderSystemPage(w, r, flash("ok", "Sent to the radio module — see the raw transcript below the form to confirm."))
+	data, err := s.loadNodeEditData(num, flash("ok", "Sent to the radio module — see the raw transcript below the form to confirm."))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.render(w, "node_edit.html", data)
 }
