@@ -128,6 +128,8 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/new", s.requireAuth(s.handleNodeNewSubmit))
 	s.mux.HandleFunc("GET /nodes/{node}", s.requireAuth(s.handleNodeEdit))
 	s.mux.HandleFunc("POST /nodes/{node}", s.requireAuth(s.handleNodeUpdate))
+	s.mux.HandleFunc("POST /nodes/{node}/radio-tuning", s.requireAuth(s.handleNodeRadioTuningUpdate))
+	s.mux.HandleFunc("POST /nodes/{node}/registration", s.requireAuth(s.handleNodeRegistrationUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/sa818/apply", s.requireAuth(s.handleNodeSA818Apply))
 
@@ -437,47 +439,90 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.HasPrefix(rxchannel, "SimpleUSB/") || strings.HasPrefix(rxchannel, "Radio/") {
-		updates := map[string]string{}
-		for _, key := range []string{"rxmixerset", "txmixaset", "txmixbset"} {
+	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
+}
+
+// handleNodeRadioTuningUpdate is the Radio tab's tuning form -- split out
+// from handleNodeUpdate (which now only handles the Setup tab's
+// rxchannel/duplex) so each tab on node_edit.html can be its own
+// self-contained form, matching the original HamVoIP app's node_form.html
+// tab structure. Loads the node fresh to find its current driver
+// (SimpleUSB vs USBRadio) rather than trusting a rxchannel form field,
+// since this form doesn't carry one.
+func (s *Server) handleNodeRadioTuningUpdate(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	view, err := s.cfg.LoadNode(num)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	if view.Radio == nil {
+		s.renderNodeEditErrorReq(w, r, num, "This node has no radio interface to tune")
+		return
+	}
+	isUSBRadio := view.Radio.Driver == "usbradio"
+
+	updates := map[string]string{}
+	for _, key := range []string{"rxmixerset", "txmixaset", "txmixbset"} {
+		if v := strings.TrimSpace(r.FormValue(key)); v != "" {
+			updates[key] = v
+		}
+	}
+
+	validCarrierFrom := validCarrierFromSimpleUSB
+	if isUSBRadio {
+		validCarrierFrom = validCarrierFromUSBRadio
+	}
+	if v := r.FormValue("carrierfrom"); v != "" {
+		if !validCarrierFrom[v] {
+			s.renderNodeEditErrorReq(w, r, num, "Unrecognized carrier-detect source")
+			return
+		}
+		updates["carrierfrom"] = v
+	}
+
+	if isUSBRadio {
+		if v := r.FormValue("driverduplex"); v != "" {
+			if !validDriverDuplex[v] {
+				s.renderNodeEditErrorReq(w, r, num, "Audio driver duplex must be 0 or 1")
+				return
+			}
+			updates["duplex"] = v
+		}
+		for _, key := range []string{"rxvoiceadj", "txctcssadj", "rxsquelchadj"} {
 			if v := strings.TrimSpace(r.FormValue(key)); v != "" {
 				updates[key] = v
 			}
 		}
+	}
 
-		validCarrierFrom := validCarrierFromSimpleUSB
-		if strings.HasPrefix(rxchannel, "Radio/") {
-			validCarrierFrom = validCarrierFromUSBRadio
+	if len(updates) > 0 {
+		if err := s.cfg.UpdateRadioSettings(num, updates); err != nil {
+			log.Printf("update radio settings %s: %v", num, err)
+			s.renderNodeEditErrorReq(w, r, num, "Could not save radio tuning: "+err.Error())
+			return
 		}
-		if v := r.FormValue("carrierfrom"); v != "" {
-			if !validCarrierFrom[v] {
-				s.renderNodeEditErrorReq(w, r, num, "Unrecognized carrier-detect source")
-				return
-			}
-			updates["carrierfrom"] = v
-		}
+	}
 
-		if strings.HasPrefix(rxchannel, "Radio/") {
-			if v := r.FormValue("driverduplex"); v != "" {
-				if !validDriverDuplex[v] {
-					s.renderNodeEditErrorReq(w, r, num, "Audio driver duplex must be 0 or 1")
-					return
-				}
-				updates["duplex"] = v
-			}
-			for _, key := range []string{"rxvoiceadj", "txctcssadj", "rxsquelchadj"} {
-				if v := strings.TrimSpace(r.FormValue(key)); v != "" {
-					updates[key] = v
-				}
-			}
-		}
-		if len(updates) > 0 {
-			if err := s.cfg.UpdateRadioSettings(num, updates); err != nil {
-				log.Printf("update radio settings %s: %v", num, err)
-				s.renderNodeEditErrorReq(w, r, num, "Saved node settings, but radio tuning failed: "+err.Error())
-				return
-			}
-		}
+	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
+}
+
+// handleNodeRegistrationUpdate is the Allstar Network tab's registration
+// form -- split out from handleNodeUpdate for the same reason as
+// handleNodeRadioTuningUpdate above.
+func (s *Server) handleNodeRegistrationUpdate(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("node")
+	if _, err := s.cfg.LoadNode(num); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
 	}
 
 	server := strings.TrimSpace(r.FormValue("reg_server"))
@@ -499,7 +544,7 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.cfg.SetRegistration(config.Registration{Node: num, Password: password, Server: server}); err != nil {
 			log.Printf("set registration %s: %v", num, err)
-			s.renderNodeEditErrorReq(w, r, num, "Saved node settings, but registration failed: "+err.Error())
+			s.renderNodeEditErrorReq(w, r, num, "Could not save registration: "+err.Error())
 			return
 		}
 	}

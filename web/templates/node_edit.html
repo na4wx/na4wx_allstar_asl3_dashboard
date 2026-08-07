@@ -2,10 +2,13 @@
 {{define "content"}}
 <h1>Node {{.View.Node}}</h1>
 
-{{if .View.Radio}}
-<form id="sa818form" method="post" action="/nodes/{{.View.Node}}/sa818/apply"></form>
-{{end}}
+<div class="tabs" data-node-number="{{.View.Node}}">
+  <button type="button" data-tab-target="setup">Setup</button>
+  <button type="button" data-tab-target="radio">Radio</button>
+  <button type="button" data-tab-target="network">Allstar Network</button>
+</div>
 
+<div data-tab-panel="setup">
 <form method="post" action="/nodes/{{.View.Node}}">
   <div class="card">
     <h2>Repeater behavior (rpt.conf)</h2>
@@ -26,12 +29,23 @@
         <option value="3" {{if eq .View.Duplex "3"}}selected{{end}}>3 — Full duplex with telemetry tones and hang time, but no repeated audio</option>
         <option value="4" {{if eq .View.Duplex "4"}}selected{{end}}>4 — Full duplex with telemetry tones and hang time; repeated audio only when the autopatch is down</option>
       </select>
-      <p class="hint">This is rpt.conf's own duplex (repeater/telemetry behavior) — not the same setting as the radio interface's own duplex below, despite the shared name.</p>
+      <p class="hint">This is rpt.conf's own duplex (repeater/telemetry behavior) — not the same setting as the radio interface's own duplex on the Radio tab, despite the shared name.</p>
     </div>
   </div>
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a class="btn" href="/nodes">Cancel</a>
+    <span style="flex:1"></span>
+    <button type="submit" form="delete_node_form" class="danger" data-confirm="Delete node {{.View.Node}}? This removes it from rpt.conf, usbradio.conf, simpleusb.conf, and any HTTP registration. This cannot be undone." data-confirm-danger>Delete node</button>
+  </div>
+</form>
+<form id="delete_node_form" method="post" action="/nodes/{{.View.Node}}/delete"></form>
+</div>
 
-  {{if .View.Radio}}
-  {{$last := .SA818Last}}
+<div data-tab-panel="radio">
+{{if .View.Radio}}
+{{$last := .SA818Last}}
+<form method="post" action="/nodes/{{.View.Node}}/sa818/apply">
   <div class="card">
     <div class="label-row">
       <h2 style="margin:0">Radio module (SA818/DRA818)</h2>
@@ -44,7 +58,7 @@
           <label for="sa818_wide">Channel spacing</label>
           {{template "help" "Narrow (12.5 kHz) is standard for most amateur repeater channels."}}
         </div>
-        <select id="sa818_wide" name="wide" form="sa818form">
+        <select id="sa818_wide" name="wide">
           <option value="0" {{if or (not $last) (not $last.Wide)}}selected{{end}}>Narrow (12.5 kHz) — most common</option>
           <option value="1" {{if and $last $last.Wide}}selected{{end}}>Wide (25 kHz)</option>
         </select>
@@ -54,7 +68,7 @@
           <label for="sa818_squelch">Squelch (0-8)</label>
           {{template "help" "Higher numbers require a stronger signal before the module opens. 4 is a typical starting point."}}
         </div>
-        <select id="sa818_squelch" name="squelch" form="sa818form">
+        <select id="sa818_squelch" name="squelch">
           <option value="0" {{if $last}}{{if eq $last.Squelch 0}}selected{{end}}{{end}}>0</option>
           <option value="1" {{if $last}}{{if eq $last.Squelch 1}}selected{{end}}{{end}}>1</option>
           <option value="2" {{if $last}}{{if eq $last.Squelch 2}}selected{{end}}{{end}}>2</option>
@@ -71,7 +85,7 @@
           <label for="sa818_volume">Volume (1-8)</label>
           {{template "help" "The module's own audio output level. 4 is a typical starting point — fine-tune by ear."}}
         </div>
-        <select id="sa818_volume" name="volume" form="sa818form">
+        <select id="sa818_volume" name="volume">
           <option value="1" {{if $last}}{{if eq $last.Volume 1}}selected{{end}}{{end}}>1</option>
           <option value="2" {{if $last}}{{if eq $last.Volume 2}}selected{{end}}{{end}}>2</option>
           <option value="3" {{if $last}}{{if eq $last.Volume 3}}selected{{end}}{{end}}>3</option>
@@ -89,14 +103,14 @@
           <label for="sa818_tx_freq">Transmit frequency (MHz)</label>
           {{template "help" "e.g. 446.1000. Enter as many decimal places as you know — this app pads it to the exact xxx.xxxx format the module expects."}}
         </div>
-        <input type="text" id="sa818_tx_freq" name="tx_freq" form="sa818form" value="{{if $last}}{{$last.TxFreqMHz}}{{end}}" placeholder="446.1000" required>
+        <input type="text" id="sa818_tx_freq" name="tx_freq" value="{{if $last}}{{$last.TxFreqMHz}}{{end}}" placeholder="446.1000" required>
       </div>
       <div class="field">
         <div class="label-row">
           <label for="sa818_rx_freq">Receive frequency (MHz)</label>
           {{template "help" "Only differs from transmit frequency on a repeater with split input/output. For a simplex node, this is normally the same as transmit."}}
         </div>
-        <input type="text" id="sa818_rx_freq" name="rx_freq" form="sa818form" value="{{if $last}}{{$last.RxFreqMHz}}{{end}}" placeholder="Same as transmit if left blank">
+        <input type="text" id="sa818_rx_freq" name="rx_freq" value="{{if $last}}{{$last.RxFreqMHz}}{{end}}" placeholder="Same as transmit if left blank">
       </div>
     </div>
     <div class="row">
@@ -105,7 +119,7 @@
           <label for="sa818_tx_ctcss">Transmit CTCSS tone</label>
           {{template "help" "Programs the module's own hardware to encode this tone on transmit, so other stations/repeaters requiring a PL tone will open for you. Leave at \"No tone\" unless you know your repeater requires one."}}
         </div>
-        <select id="sa818_tx_ctcss" name="tx_ctcss" form="sa818form">
+        <select id="sa818_tx_ctcss" name="tx_ctcss">
           <option value="" {{if or (not $last) (eq $last.TxCTCSS "")}}selected{{end}}>No tone</option>
           {{range $.CTCSSOptions}}<option value="{{.Code}}" {{if and $last (eq $last.TxCTCSS .Code)}}selected{{end}}>{{.Hz}} Hz</option>{{end}}
         </select>
@@ -115,7 +129,7 @@
           <label for="sa818_rx_ctcss">Receive CTCSS tone</label>
           {{template "help" "Programs the module itself to require this tone before it reports a valid signal — a real hardware squelch gate. Setting this is what stops the module's own squelch-tail noise burst from being mistaken for a valid signal and re-triggering the transmitter."}}
         </div>
-        <select id="sa818_rx_ctcss" name="rx_ctcss" form="sa818form">
+        <select id="sa818_rx_ctcss" name="rx_ctcss">
           <option value="" {{if or (not $last) (eq $last.RxCTCSS "")}}selected{{end}}>No tone</option>
           {{range $.CTCSSOptions}}<option value="{{.Code}}" {{if and $last (eq $last.RxCTCSS .Code)}}selected{{end}}>{{.Hz}} Hz</option>{{end}}
         </select>
@@ -123,17 +137,17 @@
     </div>
     <div class="row">
       <div class="field" style="flex:none">
-        <label><input type="checkbox" name="pre_de_emphasis" value="1" form="sa818form" {{if and $last $last.PreDeEmphasis}}checked{{end}}> Pre/de-emphasis</label>
+        <label><input type="checkbox" name="pre_de_emphasis" value="1" {{if and $last $last.PreDeEmphasis}}checked{{end}}> Pre/de-emphasis</label>
       </div>
       <div class="field" style="flex:none">
-        <label><input type="checkbox" name="high_pass" value="1" form="sa818form" {{if and $last $last.HighPassFilter}}checked{{end}}> High pass filter</label>
+        <label><input type="checkbox" name="high_pass" value="1" {{if and $last $last.HighPassFilter}}checked{{end}}> High pass filter</label>
       </div>
       <div class="field" style="flex:none">
-        <label><input type="checkbox" name="low_pass" value="1" form="sa818form" {{if and $last $last.LowPassFilter}}checked{{end}}> Low pass filter</label>
+        <label><input type="checkbox" name="low_pass" value="1" {{if and $last $last.LowPassFilter}}checked{{end}}> Low pass filter</label>
       </div>
     </div>
     <div class="actions">
-      <button type="submit" form="sa818form" class="primary" data-confirm="Send these settings to the radio module now? This transmits AT commands directly over serial to reprogram it.">Send to radio module</button>
+      <button type="submit" class="primary" data-confirm="Send these settings to the radio module now? This transmits AT commands directly over serial to reprogram it.">Send to radio module</button>
     </div>
     {{if $last}}
     <div class="hint" style="margin-top:1rem">
@@ -142,9 +156,9 @@
     <pre style="max-height:220px; overflow:auto; font-size:0.8rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem; white-space:pre-wrap; margin-top:0.5rem;">{{$last.Output}}</pre>
     {{end}}
   </div>
-  {{end}}
+</form>
 
-  {{if .View.Radio}}
+<form method="post" action="/nodes/{{.View.Node}}/radio-tuning">
   <div class="card">
     <h2>Radio interface tuning ({{.View.Radio.Driver}})</h2>
     <div class="field">
@@ -172,7 +186,7 @@
         <option value="pp" {{if eq .View.Radio.CarrierFrom "pp"}}selected{{end}}>pp — parallel port (active high)</option>
         <option value="ppinvert" {{if eq .View.Radio.CarrierFrom "ppinvert"}}selected{{end}}>ppinvert — parallel port, inverted (active low)</option>
       </select>
-      <p class="hint">Where this node decides a signal is present. usb/usbinvert need a real, correctly-wired hardware COR line — if RX never seems to work no matter which of those two you pick, the interface may not have one at all, and{{if eq .View.Radio.Driver "usbradio"}} "dsp" (software-based, no hardware line needed) is worth trying instead{{else}} switching the radio interface above to USBRadio unlocks "dsp" (software-based) detection{{end}}.</p>
+      <p class="hint">Where this node decides a signal is present. usb/usbinvert need a real, correctly-wired hardware COR line — if RX never seems to work no matter which of those two you pick, the interface may not have one at all, and{{if eq .View.Radio.Driver "usbradio"}} "dsp" (software-based, no hardware line needed) is worth trying instead{{else}} switching the radio interface on the Setup tab to USBRadio unlocks "dsp" (software-based) detection{{end}}.</p>
     </div>
     {{if eq .View.Radio.Driver "usbradio"}}
     <div class="field">
@@ -181,7 +195,7 @@
         <option value="0" {{if eq .View.Radio.DriverDuplex "0"}}selected{{end}}>0 — half duplex</option>
         <option value="1" {{if eq .View.Radio.DriverDuplex "1"}}selected{{end}}>1 — full duplex</option>
       </select>
-      <p class="hint">usbradio.conf's own duplex setting (audio-driver level) — unrelated to rpt.conf's duplex above, despite the shared name.</p>
+      <p class="hint">usbradio.conf's own duplex setting (audio-driver level) — unrelated to rpt.conf's duplex on the Setup tab, despite the shared name.</p>
     </div>
     <div class="field">
       <label for="rxvoiceadj">Rx voice level (rxvoiceadj)</label>
@@ -197,12 +211,19 @@
     </div>
     {{end}}
   </div>
-  {{else}}
-  <div class="card">
-    <p class="hint">This node has no radio interface (hub/link-only) — no tuning settings to show. Switching the radio interface above to SimpleUSB or USBRadio and saving will add one.</p>
+  <div class="actions">
+    <button type="submit" class="primary">Save tuning</button>
   </div>
-  {{end}}
+</form>
+{{else}}
+<div class="card">
+  <p class="hint">This node has no radio interface (hub/link-only) — no radio settings to show. Switching the radio interface on the Setup tab to SimpleUSB or USBRadio and saving will add them.</p>
+</div>
+{{end}}
+</div>
 
+<div data-tab-panel="network">
+<form method="post" action="/nodes/{{.View.Node}}/registration">
   <div class="card">
     <h2>HTTP registration (rpt_http_registrations.conf)</h2>
     <p class="hint">Registers this node with a remote server so other nodes can find it. Enter your AllStarLink registration password to register (or update); leave the password blank to remove this node's registration entirely.</p>
@@ -215,13 +236,10 @@
       <input type="text" id="reg_server" name="reg_server" value="{{if .Registration.Server}}{{.Registration.Server}}{{else}}register.allstarlink.org{{end}}">
     </div>
   </div>
-
   <div class="actions">
-    <button type="submit" class="primary">Save</button>
-    <a class="btn" href="/nodes">Cancel</a>
-    <span style="flex:1"></span>
-    <button type="submit" formaction="/nodes/{{.View.Node}}/delete" class="danger" data-confirm="Delete node {{.View.Node}}? This removes it from rpt.conf, usbradio.conf, simpleusb.conf, and any HTTP registration. This cannot be undone." data-confirm-danger>Delete node</button>
+    <button type="submit" class="primary">Save registration</button>
   </div>
 </form>
+</div>
 {{end}}
 {{template "layout" .}}
