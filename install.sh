@@ -154,8 +154,17 @@ log "Checking Piper (text-to-speech)"
 PIPER_RELEASE_VERSION="2023.11.14-2"
 PIPER_INSTALL_DIR="/usr/local/lib/piper"
 PIPER_VOICES_DIR="/etc/asl3-gui/piper-voices"
-PIPER_VOICE="en_US-lessac-medium"
-PIPER_VOICE_PATH="en/en_US/lessac/medium/en_US-lessac-medium"
+
+# Default voices downloaded below, one male/one female so an operator has
+# an actual choice out of the box rather than just whatever shipped
+# first -- "name:huggingface-path" pairs, path relative to
+# rhasspy/piper-voices' own repo root, without the .onnx/.onnx.json
+# extension (confirmed against the real repo layout, e.g.
+# en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx).
+PIPER_DEFAULT_VOICES=(
+	"en_US-lessac-medium:en/en_US/lessac/medium/en_US-lessac-medium"
+	"en_US-hfc_female-medium:en/en_US/hfc_female/medium/en_US-hfc_female-medium"
+)
 
 PIPER_ARCH=""
 case "$(uname -m)" in
@@ -210,23 +219,27 @@ if [ -n "$PIPER_ARCH" ]; then
 
 	if [ "$PIPER_READY" = "1" ]; then
 		mkdir -p "$PIPER_VOICES_DIR"
-		if [ -f "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx" ]; then
-			log "Voice $PIPER_VOICE already downloaded"
-		else
-			log "Downloading default voice: $PIPER_VOICE"
+		for entry in "${PIPER_DEFAULT_VOICES[@]}"; do
+			voice="${entry%%:*}"
+			voice_path="${entry#*:}"
+			if [ -f "$PIPER_VOICES_DIR/$voice.onnx" ]; then
+				log "Voice $voice already downloaded"
+				continue
+			fi
+			log "Downloading voice: $voice"
 			# Staged as .tmp and only renamed into place once both files
 			# succeed, so a connection drop mid-download can never leave a
 			# half-downloaded .onnx file that a re-run would mistake for
 			# "already downloaded".
-			if fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" \
-				&& fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$PIPER_VOICE_PATH.onnx.json" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json"; then
-				mv "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx"
-				log "Downloaded voice $PIPER_VOICE to $PIPER_VOICES_DIR (more voices at https://huggingface.co/rhasspy/piper-voices)"
+			if fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$voice_path.onnx" "$PIPER_VOICES_DIR/$voice.onnx.tmp" \
+				&& fetch "https://huggingface.co/rhasspy/piper-voices/resolve/main/$voice_path.onnx.json" "$PIPER_VOICES_DIR/$voice.onnx.json"; then
+				mv "$PIPER_VOICES_DIR/$voice.onnx.tmp" "$PIPER_VOICES_DIR/$voice.onnx"
+				log "Downloaded voice $voice to $PIPER_VOICES_DIR (more voices at https://huggingface.co/rhasspy/piper-voices)"
 			else
-				rm -f "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.tmp" "$PIPER_VOICES_DIR/$PIPER_VOICE.onnx.json"
-				warn "couldn't download the default Piper voice (offline?) — the \"Create from text\" sound generator will show no voices until one is downloaded. Re-run this script with network access, or see https://huggingface.co/rhasspy/piper-voices"
+				rm -f "$PIPER_VOICES_DIR/$voice.onnx.tmp" "$PIPER_VOICES_DIR/$voice.onnx.json"
+				warn "couldn't download the $voice Piper voice (offline?) — re-run this script with network access, or see https://huggingface.co/rhasspy/piper-voices"
 			fi
-		fi
+		done
 	fi
 fi
 
