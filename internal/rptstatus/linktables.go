@@ -112,6 +112,51 @@ func DescribeNode(dir Directory, number string) ConnectedNode {
 	return n
 }
 
+// LstatsRow is one connected peer's row from "rpt lstats", with a
+// directory-looked-up Callsign inserted right after the first column
+// (every real app_rpt version puts the peer's node number there --
+// confirmed in this package's own tests against real output) -- the
+// same per-row shape BuildLinkTables' own Activity table already uses,
+// factored out so the live "Connected right now" card (see internal/
+// server/live.go) can't drift from it. Keyed is only meaningful for a
+// live snapshot (see KeyedNodes); a historical row has no live keyed
+// state to report, so BuildLinkTables never sets it.
+type LstatsRow struct {
+	Fields []string `json:"fields"`
+	Keyed  bool     `json:"keyed"`
+}
+
+// BuildLstatsRows turns one "rpt lstats" reading (headers, rows -- see
+// ParseLstats) into display-ready headers and rows: headers get
+// DisplayHeader's sentence-casing plus the inserted "Callsign" column,
+// each row gets its own Callsign lookup and, if keyed is non-nil, its
+// live talking state (keyed[row[0]], the peer's node number). keyed may
+// be nil (a historical reading has none), in which case every row's
+// Keyed is simply false.
+func BuildLstatsRows(dir Directory, headers []string, rows [][]string, keyed map[string]bool) (displayHeaders []string, out []LstatsRow) {
+	for i, h := range headers {
+		displayHeaders = append(displayHeaders, DisplayHeader(h))
+		if i == 0 {
+			displayHeaders = append(displayHeaders, "Callsign")
+		}
+	}
+	for _, row := range rows {
+		fields := make([]string, 0, len(row)+1)
+		for i, v := range row {
+			fields = append(fields, v)
+			if i == 0 {
+				fields = append(fields, DescribeNode(dir, v).Callsign)
+			}
+		}
+		var isKeyed bool
+		if len(row) > 0 {
+			isKeyed = keyed[row[0]]
+		}
+		out = append(out, LstatsRow{Fields: fields, Keyed: isKeyed})
+	}
+	return displayHeaders, out
+}
+
 // BuildLinkTables flattens a node's records into the two tables the home
 // page renders. Headers come from the most recent record that parsed
 // cleanly, so the table keeps working even if a later sample was taken

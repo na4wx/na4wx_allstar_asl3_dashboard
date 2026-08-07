@@ -56,11 +56,15 @@ type nodeQuickStatus struct {
 	StatsErr  string
 	Receiving bool
 
-	// NowConnected is the current connected-node list with callsigns --
-	// the same data as the newest history row, surfaced separately so
-	// the live card doesn't make the reader parse a table to answer
+	// ConnectedHeaders/ConnectedRows is the current connected-peer table
+	// (app_rpt's own "rpt lstats" columns, a directory-looked-up
+	// Callsign inserted after the first -- see rptstatus.BuildLstatsRows)
+	// -- the same data as the newest Link activity history row below,
+	// surfaced separately (and live-updated, see live.go) so the "Right
+	// now" card doesn't make the reader dig through history to answer
 	// "who is on right now".
-	NowConnected []rptstatus.ConnectedNode
+	ConnectedHeaders []string
+	ConnectedRows    []rptstatus.LstatsRow
 }
 
 type homePageData struct {
@@ -174,13 +178,13 @@ func (s *Server) gatherNodeStatuses(r *http.Request) ([]*config.NodeView, system
 			q.Stats, q.StatsOK = rptstatus.ParseRptStats(out)
 			q.Receiving = rptstatus.NodeReceiving(q.Stats)
 		}
-		for _, number := range rptstatus.ParseConnectedNodes(q.Connected) {
-			q.NowConnected = append(q.NowConnected, rptstatus.DescribeNode(s.nodes, number))
+		if headers, rows, ok := rptstatus.ParseLstats(q.Activity); ok {
+			// Mark which connected peers are keying right now (RPT_ALINKS)
+			// -- the same live read the WS push uses, so the page-load
+			// snapshot and the first pushed update agree.
+			keyed := s.keyedNodeSet(r.Context(), view.Node, len(rows) > 0)
+			q.ConnectedHeaders, q.ConnectedRows = rptstatus.BuildLstatsRows(s.nodes, headers, rows, keyed)
 		}
-		// Mark which connected nodes are keying right now (RPT_ALINKS) --
-		// the same live read the SSE stream uses, so the page-load
-		// snapshot and the first pushed update agree.
-		s.markKeyed(r.Context(), view.Node, q.NowConnected)
 
 		quick = append(quick, q)
 	}

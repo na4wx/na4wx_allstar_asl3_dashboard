@@ -26,11 +26,16 @@ const liveFetchTimeout = 8 * time.Second
 // liveNodeState is the moment-to-moment state pushed to the "Right now"
 // card: whether the local receiver is keyed, the raw "Signal on input"
 // value (shown in the stats table, kept in sync with the pill), and the
-// currently connected nodes with their keyed flags.
+// currently connected peers as an app_rpt "rpt lstats" table (see
+// rptstatus.BuildLstatsRows) -- the same shape as the historical Link
+// activity table below it, just live-updated instead of sampled, so the
+// two read as one consistent AllMon-style view rather than a simpler
+// live summary sitting above a richer history.
 type liveNodeState struct {
-	Receiving     bool                      `json:"receiving"`
-	SignalOnInput string                    `json:"signalOnInput"`
-	Connected     []rptstatus.ConnectedNode `json:"connected"`
+	Receiving        bool                  `json:"receiving"`
+	SignalOnInput    string                `json:"signalOnInput"`
+	ConnectedHeaders []string              `json:"connectedHeaders"`
+	ConnectedRows    []rptstatus.LstatsRow `json:"connectedRows"`
 }
 
 // snapshotNode reads everything the live stream pushes in one pass: the
@@ -52,13 +57,13 @@ func (s *Server) snapshotNode(ctx context.Context, number string) (liveNodeState
 	}
 
 	nodesOut, _ := system.AsteriskRX(ctx, s.asteriskBin, "rpt nodes "+number)
-	for _, num := range rptstatus.ParseConnectedNodes(nodesOut) {
-		live.Connected = append(live.Connected, rptstatus.DescribeNode(s.nodes, num))
-	}
-	s.markKeyed(ctx, number, live.Connected)
-
 	activityOut, _ := system.AsteriskRX(ctx, s.asteriskBin, "rpt lstats "+number)
 	s.history.record(number, nodesOut, activityOut)
+
+	if headers, rows, ok := rptstatus.ParseLstats(activityOut); ok {
+		keyed := s.keyedNodeSet(ctx, number, len(rows) > 0)
+		live.ConnectedHeaders, live.ConnectedRows = rptstatus.BuildLstatsRows(s.nodes, headers, rows, keyed)
+	}
 
 	q := nodeQuickStatus{Number: number}
 	q.ConnectedHistory, q.ActivityHeaders, q.ActivityHistory = rptstatus.BuildLinkTables(s.nodes, s.history.forNode(number))
@@ -82,25 +87,20 @@ func (s *Server) renderHistoryFragment(q nodeQuickStatus) string {
 	return buf.String()
 }
 
-// markKeyed flags which of connected are transmitting right now, from
-// app_rpt's RPT_ALINKS (see rptstatus.KeyedNodes). Best-effort and
-// additive: on a build without that variable, nothing is marked.
-// Skipped entirely when nothing is connected, so an idle node makes no
-// extra CLI call.
-func (s *Server) markKeyed(ctx context.Context, number string, connected []rptstatus.ConnectedNode) {
-	if len(connected) == 0 {
-		return
+// keyedNodeSet reads app_rpt's RPT_ALINKS to find which of number's
+// currently connected peers are transmitting right now (see
+// rptstatus.KeyedNodes). Skipped entirely when nothing is connected, so
+// an idle node makes no extra CLI call -- the returned nil map is a safe
+// "nothing keyed" value to index into either way.
+func (s *Server) keyedNodeSet(ctx context.Context, number string, haveConnections bool) map[string]bool {
+	if !haveConnections {
+		return nil
 	}
 	out, err := system.AsteriskRX(ctx, s.asteriskBin, "rpt show variables "+number)
 	if err != nil {
-		return
+		return nil
 	}
-	keyed := rptstatus.KeyedNodes(out)
-	for i := range connected {
-		if keyed[connected[i].Number] {
-			connected[i].Keyed = true
-		}
-	}
+	return rptstatus.KeyedNodes(out)
 }
 
 // liveMsg is one named live-status event ("live" or "history") and its

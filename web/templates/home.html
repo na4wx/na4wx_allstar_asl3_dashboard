@@ -22,8 +22,25 @@
   <div class="field" style="margin-bottom:0">
     <label>Connected right now</label>
     <div data-live-connected>
-    {{if .NowConnected}}
-      {{range .NowConnected}}<span class="node-chip{{if .Keyed}} keyed{{end}}"{{if .Detail}} title="{{.Detail}}"{{end}}><span class="tag">{{.Number}}</span>{{if .Callsign}}<span class="node-call">{{.Callsign}}</span>{{end}}{{if .Keyed}}<span class="talking-badge">talking</span>{{end}}</span> {{end}}
+    {{if .ConnectedRows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            {{range .ConnectedHeaders}}<th>{{.}}</th>{{end}}
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .ConnectedRows}}
+          <tr{{if .Keyed}} class="keyed-row"{{end}}>
+            {{range .Fields}}<td>{{.}}</td>{{end}}
+            <td>{{if .Keyed}}<span class="talking-badge">talking</span>{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
     {{else}}
       <div class="hint">Nothing connected.</div>
     {{end}}

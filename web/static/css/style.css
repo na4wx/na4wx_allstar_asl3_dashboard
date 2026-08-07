@@ -356,6 +356,17 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
 .data-table tbody tr:hover { background: var(--surface); }
 .data-table tbody tr:last-child td { border-bottom: none; }
 
+/* A connected peer that is transmitting right now (RPT_ALINKS keyed),
+   on the "Connected right now" live table -- the same danger-toned
+   language as .talking-badge, just applied to the whole row so it reads
+   at a glance in a wide, many-column table. */
+.data-table tr.keyed-row {
+  background: var(--danger-soft);
+}
+.data-table tr.keyed-row:hover {
+  background: color-mix(in srgb, var(--danger-soft) 80%, var(--surface));
+}
+
 .nowrap { white-space: nowrap; }
 .muted { color: var(--text-dim); font-size: 0.88em; }
 

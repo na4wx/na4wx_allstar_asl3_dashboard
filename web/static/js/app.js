@@ -411,46 +411,66 @@ const AppSocket = (function () {
     container.replaceChildren(pill);
   }
 
-  function renderConnected(container, connected) {
-    if (!connected || !connected.length) {
+  // Renders the "Connected right now" card as a table -- the same shape
+  // as the historical Link activity table (see node_history.html and
+  // rptstatus.BuildLstatsRows): app_rpt's own "rpt lstats" columns,
+  // dynamic rather than fixed by this app, plus a directory-looked-up
+  // Callsign column and a talking indicator. Mirrors home.html's own
+  // server-rendered markup exactly, so the first paint and every live
+  // update after it look identical.
+  function renderConnectedTable(container, headers, rows) {
+    if (!rows || !rows.length) {
       const hint = document.createElement("div");
       hint.className = "hint";
       hint.textContent = "Nothing connected.";
       container.replaceChildren(hint);
       return;
     }
-    const frag = document.createDocumentFragment();
-    connected.forEach((n) => {
-      const chip = document.createElement("span");
-      chip.className = "node-chip" + (n.keyed ? " keyed" : "");
-      if (n.detail) chip.title = n.detail;
+    const scroll = document.createElement("div");
+    scroll.className = "table-scroll";
+    const table = document.createElement("table");
+    table.className = "data-table";
 
-      const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = n.number;
-      chip.appendChild(tag);
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    (headers || []).forEach((h) => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      headRow.appendChild(th);
+    });
+    const statusTh = document.createElement("th");
+    statusTh.textContent = "Status";
+    headRow.appendChild(statusTh);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
 
-      if (n.callsign) {
-        const call = document.createElement("span");
-        call.className = "node-call";
-        call.textContent = n.callsign;
-        chip.appendChild(call);
-      }
-      if (n.keyed) {
+    const tbody = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      if (row.keyed) tr.className = "keyed-row";
+      (row.fields || []).forEach((v) => {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      const statusTd = document.createElement("td");
+      if (row.keyed) {
         const badge = document.createElement("span");
         badge.className = "talking-badge";
         badge.textContent = "talking";
-        chip.appendChild(badge);
+        statusTd.appendChild(badge);
       }
-      frag.appendChild(chip);
-      frag.appendChild(document.createTextNode(" "));
+      tr.appendChild(statusTd);
+      tbody.appendChild(tr);
     });
-    container.replaceChildren(frag);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    container.replaceChildren(scroll);
   }
 
   // DOM built with textContent/createElement throughout (renderPill/
-  // renderConnected above) so callsign/description text from the node
-  // directory can never inject markup.
+  // renderConnectedTable above) so callsign/description text from the
+  // node directory can never inject markup.
   function onLive(type, node, data) {
     const card = document.querySelector('[data-live-node="' + CSS.escape(node) + '"]');
     if (!card) return; // subscribed from a page we've since swapped away from
@@ -461,7 +481,7 @@ const AppSocket = (function () {
       const signalCell = card.querySelector("[data-live-signal]");
       if (indicatorEl) indicatorEl.classList.add("on");
       if (pillBox) renderPill(pillBox, data.receiving);
-      if (connBox) renderConnected(connBox, data.connected);
+      if (connBox) renderConnectedTable(connBox, data.connectedHeaders, data.connectedRows);
       if (signalCell && data.signalOnInput) signalCell.textContent = data.signalOnInput;
     } else {
       const historyBox = document.querySelector('[data-live-history="' + CSS.escape(node) + '"]');
