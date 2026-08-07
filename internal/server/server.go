@@ -27,6 +27,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/soundschedule"
 	"hamvoipconfiggui-asl3/internal/tts"
 	"hamvoipconfiggui-asl3/internal/wifi"
+	"hamvoipconfiggui-asl3/internal/wxtone"
 )
 
 const sessionCookie = "hamvoip_gui_session"
@@ -63,6 +64,11 @@ type Server struct {
 	// any -- see internal/skywarnplus's package doc. This app never
 	// installs it itself, only configures a copy that's already there.
 	skywarnDir string
+
+	// wxTones holds the operator's own alert-driven courtesy-tone
+	// mappings -- see internal/wxtone's package doc. Always non-nil.
+	// StartWXTonePoller applies them; the SkywarnPlus tab manages them.
+	wxTones *wxtone.Store
 
 	// wifiManager owns wlan0's hotspot-fallback state machine -- see
 	// internal/wifi's package doc. Always non-nil (constructed in New);
@@ -117,7 +123,7 @@ func (s *Server) StartCloudAgent(ctx context.Context) {
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
 // wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
 // wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, wxTonesPath, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
 	cfg := &config.Store{Dir: asteriskDir}
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
@@ -134,6 +140,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		ttsVoicesDir:   ttsVoicesDir,
 		soundSchedule:  soundScheduleStore,
 		skywarnDir:     skywarnDir,
+		wxTones:        wxtone.New(wxTonesPath),
 		nodes:          nodedb.New(nodeDBPath, nodeDBURL),
 		history:        newLinkHistory(),
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
@@ -243,6 +250,8 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/counties/{code}/delete", s.requireAuth(s.handleNodeSkywarnDeleteCounty))
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/pushover", s.requireAuth(s.handleNodeSkywarnPushover))
 	s.mux.HandleFunc("POST /nodes/{node}/skywarn/skydescribe", s.requireAuth(s.handleNodeSkywarnSkyDescribe))
+	s.mux.HandleFunc("POST /nodes/{node}/wxtone", s.requireAuth(s.handleNodeWXToneSave))
+	s.mux.HandleFunc("POST /nodes/{node}/wxtone/{id}/delete", s.requireAuth(s.handleNodeWXToneDelete))
 
 	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
@@ -488,6 +497,9 @@ type nodeEditData struct {
 	SkywarnStatus         skywarnplus.Status
 	SkywarnNodeRegistered bool
 
+	// SkywarnPlus tab, WX courtesy tone half -- see populateNodeWXTones.
+	WXTones []wxtone.Entry
+
 	// Commands tab -- see populateNodeCommands.
 	FunctionsSect string
 	Macros        []config.FunctionMacro
@@ -528,6 +540,7 @@ func (s *Server) loadNodeEditData(ctx context.Context, num string, pd pageData) 
 	s.populateNodeTelemetry(&data)
 	s.populateNodeSoundSchedule(&data)
 	s.populateNodeSkywarn(ctx, &data)
+	s.populateNodeWXTones(&data)
 	s.populateNodeCommands(ctx, &data)
 	s.populateNodeAutomation(&data)
 	return data, nil
@@ -789,6 +802,11 @@ func (s *Server) handleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		s.render(w, "node_edit.html", data)
 		return
+	}
+	// WX courtesy-tone mappings live outside rpt.conf (see
+	// internal/wxtone), so DeleteNode above doesn't clean them up.
+	if err := s.wxTones.DeleteByNode(num); err != nil {
+		log.Printf("delete WX courtesy tone mappings for node %s: %v", num, err)
 	}
 	http.Redirect(w, r, "/nodes", http.StatusSeeOther)
 }

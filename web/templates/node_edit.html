@@ -1063,6 +1063,118 @@
       <button type="submit" class="primary">Save SkyDescribe settings</button>
     </div>
   </form>
+
+  <h2 style="margin-top:1.25rem">WX courtesy tone</h2>
+  {{template "help" "A safer alternative to SkywarnPlus's own courtesy-tone swap: this app checks SkywarnPlus's own active-alert count itself and applies whichever state you pick below when it changes. Each of Normal/WX is independently either a sound file (its bytes are swapped onto the courtesy tone's existing destination file — no Asterisk restart needed) or a tone (its frequency/duration/amplitude is written into rpt.conf and applied with a live app_rpt reload, not a full restart)."}}
+  {{if .WXTones}}
+  <table>
+    <thead><tr><th>Courtesy tone</th><th>Normal</th><th>WX</th><th>Current</th><th></th></tr></thead>
+    <tbody>
+      {{range .WXTones}}
+      <tr>
+        <td>{{.CTKey}}</td>
+        <td>{{if eq .NormalType "tone"}}{{.NormalTone}}{{else}}{{.NormalSound}}{{end}}</td>
+        <td>{{if eq .WXType "tone"}}{{.WXTone}}{{else}}{{.WXSound}}{{end}}</td>
+        <td>{{if eq .Mode "wx"}}WX{{else}}Normal{{end}}</td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/wxtone/{{.ID}}/delete" style="display:inline" data-confirm="Remove this WX courtesy tone mapping?" data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No WX courtesy tone mappings configured yet.</p>
+  {{end}}
+
+  {{if .CTKeys}}
+  <form method="post" action="/nodes/{{.View.Node}}/wxtone" style="margin-top:1rem">
+    <div class="row">
+      <div class="field">
+        <label for="wxtone_ctkey">Courtesy tone key</label>
+        <select id="wxtone_ctkey" name="wxtone_ctkey" required>
+          <option value="">Choose one</option>
+          {{range .CTKeys}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <strong>Normal state</strong>
+        </div>
+        <label><input type="radio" name="wxtone_normal_type" value="sound" data-type-toggle checked> Sound file</label>
+        <label><input type="radio" name="wxtone_normal_type" value="tone" data-type-toggle> Tone</label>
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <strong>WX state</strong>
+        </div>
+        <label><input type="radio" name="wxtone_wx_type" value="sound" data-type-toggle checked> Sound file</label>
+        <label><input type="radio" name="wxtone_wx_type" value="tone" data-type-toggle> Tone</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" data-type-toggle-section="wxtone_normal_type:sound">
+        <label for="wxtone_normal_sound">Normal sound</label>
+        <select id="wxtone_normal_sound" name="wxtone_normal_sound">
+          <option value="">Choose one</option>
+          {{range .SoundFiles}}<option value="{{.Name}}">{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+        </select>
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_normal_freq1">Normal Freq 1 (Hz)</label>
+        <input type="number" id="wxtone_normal_freq1" name="wxtone_normal_freq1">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_normal_freq2">Normal Freq 2 (Hz)</label>
+        <input type="number" id="wxtone_normal_freq2" name="wxtone_normal_freq2">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:110px">
+        <label for="wxtone_normal_duration">Normal duration (ms)</label>
+        <input type="number" id="wxtone_normal_duration" name="wxtone_normal_duration">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_normal_type:tone" style="display:none;min-width:100px">
+        <label for="wxtone_normal_amplitude">Normal amplitude</label>
+        <input type="number" id="wxtone_normal_amplitude" name="wxtone_normal_amplitude">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" data-type-toggle-section="wxtone_wx_type:sound">
+        <label for="wxtone_wx_sound">WX sound</label>
+        <select id="wxtone_wx_sound" name="wxtone_wx_sound">
+          <option value="">Choose one</option>
+          {{range .SoundFiles}}<option value="{{.Name}}">{{.Name}}{{if not .Custom}} (built-in){{end}}</option>{{end}}
+        </select>
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_wx_freq1">WX Freq 1 (Hz)</label>
+        <input type="number" id="wxtone_wx_freq1" name="wxtone_wx_freq1">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:90px">
+        <label for="wxtone_wx_freq2">WX Freq 2 (Hz)</label>
+        <input type="number" id="wxtone_wx_freq2" name="wxtone_wx_freq2">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:110px">
+        <label for="wxtone_wx_duration">WX duration (ms)</label>
+        <input type="number" id="wxtone_wx_duration" name="wxtone_wx_duration">
+      </div>
+      <div class="field" data-type-toggle-section="wxtone_wx_type:tone" style="display:none;min-width:100px">
+        <label for="wxtone_wx_amplitude">WX amplitude</label>
+        <input type="number" id="wxtone_wx_amplitude" name="wxtone_wx_amplitude">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Add WX courtesy tone</button>
+    </div>
+  </form>
+  {{else}}
+  <p class="hint">This node has no courtesy-tone keys in its telemetry section yet — add one on the <code>Sounds &amp; Tones</code> tab first.</p>
+  {{end}}
+
+  <p class="hint" style="margin-top:1rem">AlertScript's own command/DTMF mappings, SkywarnPlus's own courtesy-tone/ID swap, and its ID-recording swap aren't managed here — see the <a href="https://github.com/Mason10198/SkywarnPlus">upstream documentation</a> and edit its config.yaml directly for those.</p>
   {{end}}
 </div>
 </div>

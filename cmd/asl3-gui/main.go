@@ -35,6 +35,7 @@ func main() {
 	ttsVoicesDir := flag.String("tts-voices-dir", "/etc/asl3-gui/piper-voices", "directory holding downloaded Piper voice models (.onnx files); empty until at least one is downloaded, e.g. via `python3 -m piper.download_voices en_US-lessac-medium`, more at https://huggingface.co/rhasspy/piper-voices")
 	soundSchedulePath := flag.String("sound-schedule-file", "/etc/asl3-gui/sound-schedule.json", "path to store scheduled sound-playback entries -- these aren't an Asterisk-native mechanism, so this app tracks them here and fires them itself")
 	skywarnDir := flag.String("skywarn-dir", "/usr/local/bin/SkywarnPlus", "directory holding an operator-installed copy of SkywarnPlus (https://github.com/Mason10198/SkywarnPlus), a third-party weather-alert tool; this app only ever configures a copy that's already there")
+	wxTonesPath := flag.String("wx-tones-file", "/etc/asl3-gui/wx-tones.json", "path to store the operator's own alert-driven courtesy-tone mappings -- an alternative to SkywarnPlus's own courtesy-tone swap; only takes effect once SkywarnPlus is installed")
 	nodeDBPath := flag.String("node-db-file", nodedb.DefaultPath, "path to the local copy of AllStarLink's node directory (node number -> callsign/description/location), used only to show callsigns beside node numbers; this is the same path ASL3's own asl3-update-astdb tool uses, so other dashboards on the system share it")
 	nodeDBURL := flag.String("node-db-url", nodedb.DefaultURL, "where to download the node directory from, refreshed daily")
 	nodeDBRefresh := flag.Bool("node-db-refresh", true, "download the node directory daily; set false to only read whatever copy already exists on disk and never make outbound requests")
@@ -79,7 +80,7 @@ func main() {
 		log.Printf("no admin account configured yet; visit http://<this-host>%s/setup to create one", *addr)
 	}
 
-	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, *wifiHotspotPassword, wifiDashboardPort, *wifiHotspotEnabled)
+	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *wxTonesPath, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, *wifiHotspotPassword, wifiDashboardPort, *wifiHotspotEnabled)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -87,6 +88,7 @@ func main() {
 	srv.StartWiFiWatchdog(context.Background())
 	srv.StartCloudAgent(context.Background())
 	srv.StartSoundSchedulePoller(context.Background())
+	srv.StartWXTonePoller(context.Background())
 
 	// Sample each node's link state in the background so the home
 	// page's connection history reflects what actually happened, not
