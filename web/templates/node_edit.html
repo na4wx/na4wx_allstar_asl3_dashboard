@@ -6,6 +6,7 @@
   <button type="button" data-tab-target="setup">Setup</button>
   <button type="button" data-tab-target="radio">Radio</button>
   <button type="button" data-tab-target="network">Allstar Network</button>
+  <button type="button" data-tab-target="sounds">Sounds</button>
 </div>
 
 <div data-tab-panel="setup">
@@ -240,6 +241,103 @@
     <button type="submit" class="primary">Save registration</button>
   </div>
 </form>
+</div>
+
+<div data-tab-panel="sounds">
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Custom sound files</h2>
+    {{template "help" "Sounds shared across every node on this box (not just this one) — station IDs, custom courtesy tones, or anything else you can reference by name in a sound field. Any recording uploaded or generated here shows up as an option anywhere this app offers a sound picker."}}
+  </div>
+  {{$anyCustom := false}}
+  {{range .SoundFiles}}{{if .Custom}}{{$anyCustom = true}}{{end}}{{end}}
+  {{if $anyCustom}}
+  <table>
+    <thead><tr><th>Name</th><th></th><th></th></tr></thead>
+    <tbody>
+      {{range .SoundFiles}}
+      {{if .Custom}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>
+          <button type="button" data-play-sound="/nodes/{{$.View.Node}}/sounds/{{.Name}}/audio">Play</button>
+        </td>
+        <td>
+          <form method="post" action="/nodes/{{$.View.Node}}/sounds/{{.Name}}/delete" style="display:inline" data-confirm="Delete sound file {{.Name}}? Any field currently referencing it will stop working until you pick a replacement." data-confirm-danger>
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No custom sound files uploaded yet.</p>
+  {{end}}
+</div>
+
+<form method="post" action="/nodes/{{.View.Node}}/sounds/upload" enctype="multipart/form-data">
+  <div class="card">
+    <div class="label-row">
+      <h2 style="margin:0">Upload a sound file</h2>
+      {{template "help" "Upload a WAV recording (e.g. a custom station ID or courtesy tone) and it's automatically converted to the format app_rpt needs. The conversion tool's own output is shown if anything goes wrong, rather than guessing at what happened."}}
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="sound_name">Name</label>
+        <input type="text" id="sound_name" name="sound_name" placeholder="my-station-id" required pattern="[a-zA-Z0-9_-]+">
+        <div class="hint">Letters, numbers, - and _ only. Uploading with an existing name replaces it.</div>
+      </div>
+      <div class="field">
+        <label for="sound_file">Audio file (WAV recommended)</label>
+        <input type="file" id="sound_file" name="sound_file" accept="audio/*" required>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Upload &amp; convert</button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Create from text</h2>
+    {{template "help" "Generates a sound file by speaking typed text with a downloaded Piper voice, entirely on this box — no internet or account needed. Falls back to espeak-ng if Piper can't run on this system. Saved through the same conversion as an upload, so it works anywhere a sound field accepts one."}}
+  </div>
+  {{if .TTSVoices}}
+  <form method="post" action="/nodes/{{.View.Node}}/sounds/tts">
+    <input type="hidden" name="tts_engine" id="tts_engine" value="{{.TTSEngine}}">
+    <div class="row">
+      <div class="field">
+        <label for="tts_sound_name">Name</label>
+        <input type="text" id="tts_sound_name" name="sound_name" placeholder="weekend-net-reminder" required pattern="[a-zA-Z0-9_-]+">
+        <div class="hint">Letters, numbers, - and _ only. Generating with an existing name replaces it.</div>
+      </div>
+      <div class="field">
+        <label for="tts_voice">Voice</label>
+        <select id="tts_voice" name="tts_voice" required>
+          {{range .TTSVoices}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="tts_text">Text to speak</label>
+      <textarea id="tts_text" name="tts_text" rows="3" placeholder="The Tuesday night net starts at 8 PM." required></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" data-tts-preview="/nodes/{{.View.Node}}/sounds/tts/preview">Preview</button>
+      <button type="submit" class="primary">Generate &amp; save</button>
+      <span class="hint" data-tts-preview-status></span>
+    </div>
+    {{if .TTSNotice}}<p class="hint" style="margin-top:8px">{{.TTSNotice}}</p>{{end}}
+  </form>
+  {{else if .TTSError}}
+  <p class="hint">{{.TTSError}}</p>
+  {{else}}
+  <p class="hint">No text-to-speech voices downloaded yet. Download one into <code>/etc/asl3-gui/piper-voices/</code> (both the <code>.onnx</code> file and its matching <code>.onnx.json</code>) from <a href="https://huggingface.co/rhasspy/piper-voices">huggingface.co/rhasspy/piper-voices</a>, then reload this page.</p>
+  {{end}}
+</div>
 </div>
 {{end}}
 {{template "layout" .}}

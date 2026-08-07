@@ -27,6 +27,11 @@ func main() {
 	asteriskBin := flag.String("asterisk-bin", "asterisk", "path to the asterisk binary, or bare name if it's on PATH")
 	sa818Port := flag.String("sa818-port", "", "serial device path for the SA818/DRA818 radio module, e.g. /dev/ttyUSB0 (default: auto-detect /dev/serial0 then /dev/ttyUSB0, matching ASL3's own sa818 tool)")
 	sa818StatePath := flag.String("sa818-state-file", "/etc/asl3-gui/sa818-last.json", "path to store the last settings sent to the SA818/DRA818 module")
+	soundsCustomDir := flag.String("sounds-custom-dir", "/etc/asterisk/local", "directory for the operator's own uploadable sound files (station ID, custom courtesy tones)")
+	soundsStockDir := flag.String("sounds-stock-dir", "/var/lib/asterisk/sounds/rpt", "app_rpt's own built-in prompt library, offered as read-only pick-list options (e.g. \"rpt/callproceeding\") -- never written to")
+	soxTool := flag.String("sox-tool", "sox", "path to the sox audio tool, or bare name if it's on PATH (used to transcode an uploaded sound file to the 8kHz mono format app_rpt expects)")
+	ttsTool := flag.String("tts-tool", "piper", "path to the Piper text-to-speech binary, or bare name if it's on PATH (used by the \"Create from text\" sound generator); falls back to espeak-ng if Piper can't run on this system")
+	ttsVoicesDir := flag.String("tts-voices-dir", "/etc/asl3-gui/piper-voices", "directory holding downloaded Piper voice models (.onnx files); empty until at least one is downloaded, e.g. via `python3 -m piper.download_voices en_US-lessac-medium`, more at https://huggingface.co/rhasspy/piper-voices")
 	wifiHotspotSSID := flag.String("wifi-hotspot-ssid", "ASL3 Dashboard", "SSID this node broadcasts as a fallback WiFi hotspot on wlan0 the moment it has no active network connection")
 	wifiHotspotPassword := flag.String("wifi-hotspot-password", "", "password for the fallback WiFi hotspot above (WPA2, 8-63 characters); empty broadcasts it open")
 	wifiHotspotEnabled := flag.Bool("wifi-hotspot-enabled", true, "automatically stand up the fallback WiFi hotspot on wlan0 when this node has no active network connection")
@@ -65,7 +70,7 @@ func main() {
 		log.Printf("no admin account configured yet; visit http://<this-host>%s/setup to create one", *addr)
 	}
 
-	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *wifiHotspotSSID, *wifiHotspotPassword, wifiDashboardPort, *wifiHotspotEnabled)
+	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *wifiHotspotSSID, *wifiHotspotPassword, wifiDashboardPort, *wifiHotspotEnabled)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

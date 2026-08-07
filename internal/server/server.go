@@ -19,6 +19,8 @@ import (
 	"hamvoipconfiggui-asl3/internal/auth"
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/sa818"
+	"hamvoipconfiggui-asl3/internal/sounds"
+	"hamvoipconfiggui-asl3/internal/tts"
 	"hamvoipconfiggui-asl3/internal/wifi"
 )
 
@@ -33,6 +35,18 @@ type Server struct {
 	asteriskBin    string
 	sa818Port      string
 	sa818StatePath string
+
+	// sounds manages the shared (node-agnostic) custom/stock sound-file
+	// directories -- see internal/sounds's package doc. ttsTool and
+	// ttsVoicesDir configure the "Create from text" sound generator (see
+	// internal/tts's package doc): ttsTool is normally the Piper binary,
+	// with espeak-ng as a same-page fallback if Piper can't run on this
+	// system; a voice named in ttsVoicesDir is only ever selected by
+	// looking it up through tts.FindVoice, never built from raw form
+	// input.
+	sounds       *sounds.Store
+	ttsTool      string
+	ttsVoicesDir string
 
 	// wifiManager owns wlan0's hotspot-fallback state machine -- see
 	// internal/wifi's package doc. Always non-nil (constructed in New);
@@ -53,7 +67,7 @@ type Server struct {
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
 // wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
 // wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
 	s := &Server{
 		auth:           authMgr,
 		cfg:            &config.Store{Dir: asteriskDir},
@@ -61,6 +75,9 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		asteriskBin:    asteriskBin,
 		sa818Port:      sa818Port,
 		sa818StatePath: sa818StatePath,
+		sounds:         sounds.New(soundsCustomDir, soundsStockDir, soxTool),
+		ttsTool:        ttsTool,
+		ttsVoicesDir:   ttsVoicesDir,
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 	}
 
@@ -132,6 +149,11 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/registration", s.requireAuth(s.handleNodeRegistrationUpdate))
 	s.mux.HandleFunc("POST /nodes/{node}/delete", s.requireAuth(s.handleNodeDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/sa818/apply", s.requireAuth(s.handleNodeSA818Apply))
+	s.mux.HandleFunc("POST /nodes/{node}/sounds/upload", s.requireAuth(s.handleNodeSoundUpload))
+	s.mux.HandleFunc("POST /nodes/{node}/sounds/tts", s.requireAuth(s.handleNodeSoundTTS))
+	s.mux.HandleFunc("POST /nodes/{node}/sounds/tts/preview", s.requireAuth(s.handleNodeSoundTTSPreview))
+	s.mux.HandleFunc("GET /nodes/{node}/sounds/{name}/audio", s.requireAuth(s.handleNodeSoundAudio))
+	s.mux.HandleFunc("POST /nodes/{node}/sounds/{name}/delete", s.requireAuth(s.handleNodeSoundDelete))
 
 	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
@@ -346,6 +368,15 @@ type nodeEditData struct {
 	SA818Port    string
 	SA818Last    *sa818.LastApplied
 	CTCSSOptions []ctcssOption
+
+	// Sounds tab: shared (node-agnostic) custom+stock sound library plus
+	// whichever text-to-speech backend is available -- see
+	// populateNodeSounds.
+	SoundFiles []sounds.File
+	TTSVoices  []tts.Voice
+	TTSEngine  string
+	TTSNotice  string
+	TTSError   string
 }
 
 func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
@@ -371,6 +402,7 @@ func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error)
 			data.SA818Last = last
 		}
 	}
+	s.populateNodeSounds(&data)
 	return data, nil
 }
 
