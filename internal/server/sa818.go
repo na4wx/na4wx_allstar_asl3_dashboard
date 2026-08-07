@@ -135,7 +135,7 @@ func (s *Server) handleNodeSA818Apply(w http.ResponseWriter, r *http.Request) {
 		s.renderNodeEditErrorReq(w, r, num, "The radio module rejected these settings — see the raw transcript below the form for details.")
 		return
 	}
-	data, err := s.loadNodeEditData(num, flash("ok", "Sent to the radio module — see the raw transcript below the form to confirm."))
+	data, err := s.loadNodeEditData(r.Context(), num, flash("ok", "Sent to the radio module — see the raw transcript below the form to confirm."))
 	if err != nil {
 		http.NotFound(w, r)
 		return

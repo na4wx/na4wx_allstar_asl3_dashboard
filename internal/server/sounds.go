@@ -182,7 +182,7 @@ func (s *Server) handleNodeSoundUpload(w http.ResponseWriter, r *http.Request) {
 		s.renderNodeEditErrorReq(w, r, num, "Couldn't convert the uploaded file: "+err.Error())
 		return
 	}
-	data, err := s.loadNodeEditData(num, flash("ok", "Uploaded \""+name+"\" — pick it from any sound field."))
+	data, err := s.loadNodeEditData(r.Context(), num, flash("ok", "Uploaded \""+name+"\" — pick it from any sound field."))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -232,7 +232,7 @@ func (s *Server) handleNodeSoundTTS(w http.ResponseWriter, r *http.Request) {
 		s.renderNodeEditErrorReq(w, r, num, "Generated the audio, but couldn't convert it: "+err.Error())
 		return
 	}
-	data, err := s.loadNodeEditData(num, flash("ok", "Generated \""+name+"\" from text — pick it from any sound field."))
+	data, err := s.loadNodeEditData(r.Context(), num, flash("ok", "Generated \""+name+"\" from text — pick it from any sound field."))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -310,7 +310,7 @@ func (s *Server) handleNodeSoundDelete(w http.ResponseWriter, r *http.Request) {
 		s.renderNodeEditErrorReq(w, r, num, err.Error())
 		return
 	}
-	data, err := s.loadNodeEditData(num, flash("ok", "Deleted sound \""+name+"\"."))
+	data, err := s.loadNodeEditData(r.Context(), num, flash("ok", "Deleted sound \""+name+"\"."))
 	if err != nil {
 		http.NotFound(w, r)
 		return

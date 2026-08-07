@@ -20,6 +20,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/cloudagent"
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/sa818"
+	"hamvoipconfiggui-asl3/internal/skywarnplus"
 	"hamvoipconfiggui-asl3/internal/sounds"
 	"hamvoipconfiggui-asl3/internal/soundschedule"
 	"hamvoipconfiggui-asl3/internal/tts"
@@ -55,6 +56,11 @@ type Server struct {
 	// StartSoundSchedulePoller fires them; the Scheduler tab manages
 	// them.
 	soundSchedule *soundschedule.Store
+
+	// skywarnDir holds an operator-installed copy of SkywarnPlus, if
+	// any -- see internal/skywarnplus's package doc. This app never
+	// installs it itself, only configures a copy that's already there.
+	skywarnDir string
 
 	// wifiManager owns wlan0's hotspot-fallback state machine -- see
 	// internal/wifi's package doc. Always non-nil (constructed in New);
@@ -110,6 +116,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		ttsTool:        ttsTool,
 		ttsVoicesDir:   ttsVoicesDir,
 		soundSchedule:  soundScheduleStore,
+		skywarnDir:     skywarnDir,
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
@@ -197,6 +204,12 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /nodes/{node}/sounds/{name}/delete", s.requireAuth(s.handleNodeSoundDelete))
 	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds", s.requireAuth(s.handleNodeSoundScheduleSave))
 	s.mux.HandleFunc("POST /nodes/{node}/schedule/sounds/{id}/delete", s.requireAuth(s.handleNodeSoundScheduleDelete))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/toggle", s.requireAuth(s.handleNodeSkywarnToggle))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/register", s.requireAuth(s.handleNodeSkywarnRegister))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/counties", s.requireAuth(s.handleNodeSkywarnAddCounty))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/counties/{code}/delete", s.requireAuth(s.handleNodeSkywarnDeleteCounty))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/pushover", s.requireAuth(s.handleNodeSkywarnPushover))
+	s.mux.HandleFunc("POST /nodes/{node}/skywarn/skydescribe", s.requireAuth(s.handleNodeSkywarnSkyDescribe))
 
 	s.mux.HandleFunc("GET /system", s.requireAuth(s.handleSystemPage))
 	s.mux.HandleFunc("POST /system/hostname", s.requireAuth(s.handleSystemHostname))
@@ -441,9 +454,18 @@ type nodeEditData struct {
 	// Scheduler tab: scheduled sound-playback entries -- see
 	// populateNodeSoundSchedule.
 	SoundSchedules []soundschedule.Entry
+
+	// SkywarnPlus tab -- see populateNodeSkywarn. CountyCodeOptions is
+	// populated regardless of install state (this app's own bundled
+	// reference data); the rest is only meaningful when
+	// SkywarnInstalled is true.
+	CountyCodeOptions     []skywarnplus.CountyOption
+	SkywarnInstalled      bool
+	SkywarnStatus         skywarnplus.Status
+	SkywarnNodeRegistered bool
 }
 
-func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error) {
+func (s *Server) loadNodeEditData(ctx context.Context, num string, pd pageData) (nodeEditData, error) {
 	view, err := s.cfg.LoadNode(num)
 	if err != nil {
 		return nodeEditData{}, err
@@ -469,12 +491,13 @@ func (s *Server) loadNodeEditData(num string, pd pageData) (nodeEditData, error)
 	s.populateNodeSounds(&data)
 	s.populateNodeTelemetry(&data)
 	s.populateNodeSoundSchedule(&data)
+	s.populateNodeSkywarn(ctx, &data)
 	return data, nil
 }
 
 func (s *Server) handleNodeEdit(w http.ResponseWriter, r *http.Request) {
 	num := r.PathValue("node")
-	data, err := s.loadNodeEditData(num, pageData{LoggedIn: true})
+	data, err := s.loadNodeEditData(r.Context(), num, pageData{LoggedIn: true})
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -651,7 +674,7 @@ func (s *Server) handleNodeRegistrationUpdate(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) renderNodeEditErrorReq(w http.ResponseWriter, r *http.Request, num, msg string) {
-	data, err := s.loadNodeEditData(num, flash("error", msg))
+	data, err := s.loadNodeEditData(r.Context(), num, flash("error", msg))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -721,7 +744,7 @@ func (s *Server) handleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.cfg.DeleteNode(num); err != nil {
 		log.Printf("delete node %s: %v", num, err)
-		data, loadErr := s.loadNodeEditData(num, flash("error", "Could not delete node: "+err.Error()))
+		data, loadErr := s.loadNodeEditData(r.Context(), num, flash("error", "Could not delete node: "+err.Error()))
 		if loadErr != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
