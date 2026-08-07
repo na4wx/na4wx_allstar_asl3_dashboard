@@ -133,8 +133,23 @@ type LstatsRow struct {
 // live talking state (keyed[row[0]], the peer's node number). keyed may
 // be nil (a historical reading has none), in which case every row's
 // Keyed is simply false.
+//
+// app_rpt's own "PEER" column (the network peer address, not a
+// callsign) is dropped -- the Callsign column inserted right after it
+// is what an operator actually wants there, and the raw peer address
+// isn't otherwise meaningful on this table.
 func BuildLstatsRows(dir Directory, headers []string, rows [][]string, keyed map[string]bool) (displayHeaders []string, out []LstatsRow) {
+	skip := -1
 	for i, h := range headers {
+		if strings.EqualFold(strings.TrimSpace(h), "PEER") {
+			skip = i
+			break
+		}
+	}
+	for i, h := range headers {
+		if i == skip {
+			continue
+		}
 		displayHeaders = append(displayHeaders, DisplayHeader(h))
 		if i == 0 {
 			displayHeaders = append(displayHeaders, "Callsign")
@@ -143,6 +158,9 @@ func BuildLstatsRows(dir Directory, headers []string, rows [][]string, keyed map
 	for _, row := range rows {
 		fields := make([]string, 0, len(row)+1)
 		for i, v := range row {
+			if i == skip {
+				continue
+			}
 			fields = append(fields, v)
 			if i == 0 {
 				fields = append(fields, DescribeNode(dir, v).Callsign)

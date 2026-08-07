@@ -107,3 +107,61 @@ func TestBuildLinkTablesEmptyDescription(t *testing.T) {
 		t.Errorf("Detail = %q, want just the location with no leading separator", n.Detail)
 	}
 }
+
+// TestBuildLstatsRowsDropsPeerAddsCallsignAndKeyed covers the live
+// "Connected right now" table's own row-building: app_rpt's PEER column
+// (a network address, not a callsign) must be gone, Callsign must be
+// inserted right after Node, and Keyed must reflect the passed-in set.
+func TestBuildLstatsRowsDropsPeerAddsCallsignAndKeyed(t *testing.T) {
+	headers := []string{"NODE", "PEER", "DIRECTION", "CONNECT TIME"}
+	rows := [][]string{
+		{"49616", "1.2.3.4:4569", "OUT", "00:05:12"},
+		{"99999", "5.6.7.8:4569", "IN", "00:00:01"},
+	}
+	keyed := map[string]bool{"49616": true}
+
+	displayHeaders, out := BuildLstatsRows(realDirectory, headers, rows, keyed)
+
+	wantHeaders := []string{"Node", "Callsign", "Direction", "Connect time"}
+	if len(displayHeaders) != len(wantHeaders) {
+		t.Fatalf("headers = %q, want %q", displayHeaders, wantHeaders)
+	}
+	for i, h := range wantHeaders {
+		if displayHeaders[i] != h {
+			t.Errorf("header %d = %q, want %q", i, displayHeaders[i], h)
+		}
+	}
+
+	if len(out) != 2 {
+		t.Fatalf("got %d rows, want 2", len(out))
+	}
+	want0 := []string{"49616", "WB4GBI", "OUT", "00:05:12"}
+	for i, v := range want0 {
+		if out[0].Fields[i] != v {
+			t.Errorf("row 0 field %d = %q, want %q", i, out[0].Fields[i], v)
+		}
+	}
+	if !out[0].Keyed {
+		t.Error("row 0 (49616) should be Keyed")
+	}
+	if out[1].Keyed {
+		t.Error("row 1 (99999, not in the keyed set) should not be Keyed")
+	}
+	// An unknown node's Callsign cell is simply blank, same as
+	// BuildLinkTables' own handling.
+	if out[1].Fields[1] != "" {
+		t.Errorf("row 1 Callsign = %q, want empty for an unknown node", out[1].Fields[1])
+	}
+}
+
+// TestBuildLstatsRowsNilKeyed covers a historical (non-live) reading,
+// which has no keyed set at all -- every row must simply read false
+// rather than panicking on a nil map index.
+func TestBuildLstatsRowsNilKeyed(t *testing.T) {
+	headers := []string{"NODE", "PEER"}
+	rows := [][]string{{"49616", "1.2.3.4:4569"}}
+	_, out := BuildLstatsRows(realDirectory, headers, rows, nil)
+	if out[0].Keyed {
+		t.Error("Keyed should be false with a nil keyed set")
+	}
+}
