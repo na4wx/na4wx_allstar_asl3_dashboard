@@ -19,6 +19,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/auth"
 	"hamvoipconfiggui-asl3/internal/cloudagent"
 	"hamvoipconfiggui-asl3/internal/config"
+	"hamvoipconfiggui-asl3/internal/nodedb"
 	"hamvoipconfiggui-asl3/internal/sa818"
 	"hamvoipconfiggui-asl3/internal/skywarnplus"
 	"hamvoipconfiggui-asl3/internal/sounds"
@@ -80,7 +81,22 @@ type Server struct {
 	// cloud address itself is never operator-editable.
 	cloudAgent      *cloudagent.Agent
 	cloudURLDefault string
+
+	// nodes is the local copy of AllStarLink's node directory (node
+	// number -> callsign/description/location), used only to show
+	// callsigns beside node numbers on Home/Stats and in the node list
+	// -- see internal/nodedb's package doc. history is the Home page's
+	// rolling per-node connection history, filled by
+	// StartLinkHistoryPoller.
+	nodes   *nodedb.Store
+	history *linkHistory
+	live    *liveHub
 }
+
+// NodeDB exposes the node directory so main can drive its own
+// refresh/load lifecycle without this package depending on how that's
+// scheduled.
+func (s *Server) NodeDB() *nodedb.Store { return s.nodes }
 
 // StartCloudAgent begins this node's optional, off-by-default outbound
 // connection to the public cloud platform. Safe to call even if Cloud
@@ -100,7 +116,7 @@ func (s *Server) StartCloudAgent(ctx context.Context) {
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
 // wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
 // wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
 	cfg := &config.Store{Dir: asteriskDir}
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
@@ -117,6 +133,8 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		ttsVoicesDir:   ttsVoicesDir,
 		soundSchedule:  soundScheduleStore,
 		skywarnDir:     skywarnDir,
+		nodes:          nodedb.New(nodeDBPath, nodeDBURL),
+		history:        newLinkHistory(),
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
@@ -125,6 +143,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		),
 		cloudURLDefault: cloudURLDefault,
 	}
+	s.live = newLiveHub(s)
 
 	tmpl, err := s.parseTemplates(templatesFS)
 	if err != nil {
@@ -183,7 +202,10 @@ func (s *Server) routes(staticFS fs.FS) {
 
 	// Placeholder until Phase 2/3 bring real node data -- see this
 	// package's own doc comment.
-	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handlePlaceholderHome))
+	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handleHome))
+	s.mux.HandleFunc("GET /stats", s.requireAuth(s.handleStats))
+	s.mux.HandleFunc("POST /nodes/{node}/link", s.requireAuth(s.handleNodeLink))
+	s.mux.HandleFunc("GET /nodes/{node}/live", s.requireAuth(s.handleNodeLive))
 
 	s.mux.HandleFunc("GET /nodes", s.requireAuth(s.handleNodesIndex))
 	s.mux.HandleFunc("GET /nodes/new", s.requireAuth(s.handleNodeNewForm))
@@ -353,20 +375,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-// handlePlaceholderHome stands in for the real home page until Phase 2/3
-// bring real node data from ASL3's own config. Deliberately not
-// rendering home.html yet -- that template expects live node/history
-// data this scaffold doesn't have.
-func (s *Server) handlePlaceholderHome(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(`<!doctype html><html><head><title>ASL3 Dashboard</title></head><body style="font-family:sans-serif;padding:2rem"><h1>ASL3 Dashboard</h1><p>Scaffold running. System page and Cloud Sync land in later phases.</p><p><a href="/nodes">Nodes</a></p><form method="post" action="/logout"><button type="submit">Log out</button></form></body></html>`))
-}
-
 // nodeRow is nodes_index.html's expected shape for one table row --
 // matches the field paths that template already references (.Node.Number,
-// .Node.RXChannel, .Callsign). Callsign isn't populated yet -- ASL3's
-// rpt.conf has no dedicated per-node callsign field the way this template
-// assumes; deferred until a real source for it turns up.
+// .Node.RXChannel, .Callsign), backed by the node directory (see
+// internal/nodedb) now that it's wired in.
 type nodeRow struct {
 	Node struct {
 		Number    string
@@ -397,6 +409,7 @@ func (s *Server) handleNodesIndex(w http.ResponseWriter, r *http.Request) {
 		var row nodeRow
 		row.Node.Number = view.Node
 		row.Node.RXChannel = view.RxChannel
+		row.Callsign = s.nodes.Label(view.Node)
 		rows = append(rows, row)
 	}
 

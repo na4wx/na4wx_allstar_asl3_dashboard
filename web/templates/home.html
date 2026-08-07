@@ -3,24 +3,10 @@
 
 {{if .Quick}}
 {{range .Quick}}
-{{if .MissingDevice}}
-<div class="card" style="border-color:var(--danger)">
-  <div class="label-row">
-    <h2 style="margin:0; color:var(--danger)">Node {{.Node.Number}} can't start</h2>
-    {{template "help" "This node's radio device is missing from its config file entirely — not misconfigured, just gone. This is what makes Asterisk itself fail to start (chan_simpleusb/chan_usbradio refuses to load with no device to bind to). Something outside this app most likely regenerated the file, e.g. HamVoIP's node-config.sh, which overwrites rpt.conf on every run."}}
-  </div>
-  <p class="section-intro" style="margin-top:0">Device <strong>{{.MissingDevice.Name}}</strong> is referenced by this node but doesn't exist in <strong>{{.MissingDevice.File}}</strong>.</p>
-  <form method="post" action="/nodes/{{.Node.Number}}/recreate-device" data-confirm="Recreate device {{.MissingDevice.Name}} in {{.MissingDevice.File}} with generic starting-point audio levels (500/500)? Your original tuned levels can't be recovered — you'll likely want to re-tune afterward." data-confirm-danger>
-    <div class="actions" style="margin-top:0">
-      <button type="submit" class="primary">Recreate device &amp; try to bring Asterisk up</button>
-    </div>
-  </form>
-</div>
-{{end}}
-<div class="card" data-live-node="{{.Node.Number}}">
+<div class="card" data-live-node="{{.Number}}">
   <div class="live-head">
     <div class="label-row">
-      <h2 style="margin:0">Right now — node {{.Node.Number}}</h2>
+      <h2 style="margin:0">Right now — node {{.Number}}</h2>
       {{template "help" "Live state from app_rpt, pushed to this page as it changes (no reload needed). \"On the air\" means someone is keying this node's local receiver over the radio right now — audio arriving from a linked node over the internet does not set that flag. A connected node marked \"talking\" is a linked station currently transmitting, read from app_rpt's RPT_ALINKS; not every app_rpt build reports this, and where it isn't reported no talking markers appear. Detailed field-by-field stats and connection history are on the Stats page."}}
       <span class="live-dot" data-live-indicator title="Live — updating as state changes"></span>
     </div>
@@ -47,14 +33,14 @@
 
 <div class="card">
   <div class="label-row">
-    <h2 style="margin:0">Connect node {{.Node.Number}} to another node</h2>
+    <h2 style="margin:0">Connect node {{.Number}} to another node</h2>
     {{template "help" "Sends the standard AllStarLink touch-tone command to link (*3) or unlink (*1) — the same thing you'd key in over the air, without needing a radio in your hand. The result shows up in the card above once the connection changes, and in more detail on the Stats page."}}
   </div>
-  <form method="post" action="/nodes/{{.Node.Number}}/link" data-ajax-link data-confirm="Send this link/unlink command to node {{.Node.Number}} now?">
+  <form method="post" action="/nodes/{{.Number}}/link" data-ajax-link data-confirm="Send this link/unlink command to node {{.Number}} now?">
     <div class="row">
       <div class="field">
-        <label for="quick_target_{{.Node.Number}}">Other node's number</label>
-        <input type="text" id="quick_target_{{.Node.Number}}" name="target" placeholder="2000" required>
+        <label for="quick_target_{{.Number}}">Other node's number</label>
+        <input type="text" id="quick_target_{{.Number}}" name="target" placeholder="2000" required>
         <div class="hint">The node you want to connect to, e.g. 2000.</div>
       </div>
     </div>
@@ -70,10 +56,6 @@
   <div class="actions" style="margin-top:0">
     <a class="btn primary" href="/nodes/new">Add node</a>
     <a class="btn" href="/stats">View detailed stats &amp; history</a>
-    <form method="post" action="/nodes/sync-extensions" style="display:inline">
-      <button type="submit" class="btn">Sync dialplan entries for all nodes</button>
-    </form>
-    {{template "help" "Backfills each node's extensions.conf entries (radio-secure, radio-secure-proxy, radio-iaxrpt) if any are missing — the dialplan routing that makes a node actually reachable. Only adds what's missing; never touches or duplicates existing entries, so it's safe to run any time."}}
   </div>
 </div>
 {{else}}

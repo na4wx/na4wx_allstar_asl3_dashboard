@@ -25,10 +25,10 @@
 
 {{if .Quick}}
 {{range .Quick}}
-<div class="card" data-live-node="{{.Node.Number}}">
+<div class="card" data-live-node="{{.Number}}">
   <div class="live-head">
     <div class="label-row">
-      <h2 style="margin:0">Node {{.Node.Number}} stats</h2>
+      <h2 style="margin:0">Node {{.Number}} stats</h2>
       {{template "help" "Every field app_rpt's own rpt stats command reports for this node, re-read on page load and pushed live as it changes. The quick on-air glance and link/unlink action are on the Home page."}}
       <span class="live-dot" data-live-indicator title="Live — updating as state changes"></span>
     </div>
@@ -50,7 +50,7 @@
   {{end}}
 </div>
 
-<div class="card" data-live-history="{{.Node.Number}}">
+<div class="card" data-live-history="{{.Number}}">
   {{template "node_history" .}}
 </div>
 {{end}}

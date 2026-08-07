@@ -1,6 +1,6 @@
 {{define "node_history"}}
 <div class="label-row">
-  <h2 style="margin:0">Node {{.Node.Number}} history</h2>
+  <h2 style="margin:0">Node {{.Number}} history</h2>
   {{template "help" "How this node's connections have changed over time. A new record is kept each time the connected-node list changes, retaining the last 10. Updates live as connections change."}}
 </div>
 <div class="field">
@@ -69,6 +69,6 @@
   {{end}}
 </div>
 <div class="actions">
-  <a class="btn" href="/nodes/{{.Node.Number}}">Full node settings</a>
+  <a class="btn" href="/nodes/{{.Number}}">Full node settings</a>
 </div>
 {{end}}
