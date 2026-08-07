@@ -4,6 +4,9 @@
 // button instead of letting it overflow the header (confirmed: at
 // 375px wide the uncollapsed nav overflowed the viewport by 100px+,
 // pushing "Log out" off-screen with no way to reach it at all).
+//
+// Lives in <header>, outside <main>, so it's never touched by a content
+// swap (see AppSocket below) -- no re-init needed, ever.
 (function () {
   const toggle = document.querySelector("[data-nav-toggle]");
   const nav = document.querySelector("[data-nav]");
@@ -32,67 +35,15 @@
   });
 })();
 
-// Node page tabs: a purely client-side grouping of already-independent
-// form sections (each [data-tab-panel] wraps one or more complete,
-// unmodified forms) into tabs, so switching tabs can never affect what
-// a form submits. The active tab is remembered per node in
-// localStorage, since every form on this page is a traditional POST +
-// full-page redirect, not AJAX -- without this, saving anything on a
-// tab other than the first would silently bounce the operator back to
-// tab one. Progressive enhancement: every panel is plain visible markup
-// with no hiding CSS of its own, so with JS disabled (or before this
-// runs) the page is exactly the old single long page, nothing missing.
-(function () {
-  const panels = document.querySelectorAll("[data-tab-panel]");
-  const tabsBar = document.querySelector(".tabs[data-node-number]");
-  const buttons = document.querySelectorAll("[data-tab-target]");
-  if (!panels.length || !buttons.length) return;
-
-  const storageKey = "hamvoip-node-tab-" + (tabsBar ? tabsBar.getAttribute("data-node-number") : "");
-
-  function activate(tab) {
-    let matched = false;
-    panels.forEach((p) => {
-      const isMatch = p.getAttribute("data-tab-panel") === tab;
-      p.hidden = !isMatch;
-      if (isMatch) matched = true;
-    });
-    if (!matched) {
-      // Unknown/stale stored tab id (e.g. from an older version of this
-      // page) -- fall back to the first tab rather than hiding
-      // everything.
-      panels.forEach((p, i) => (p.hidden = i !== 0));
-      tab = panels[0].getAttribute("data-tab-panel");
-    }
-    buttons.forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab-target") === tab));
-    try {
-      localStorage.setItem(storageKey, tab);
-    } catch (e) {
-      // Private browsing / storage disabled -- tab switching still
-      // works for this page view, it just won't be remembered.
-    }
-  }
-
-  buttons.forEach((b) => {
-    b.addEventListener("click", () => activate(b.getAttribute("data-tab-target")));
-  });
-
-  let initial = null;
-  try {
-    initial = localStorage.getItem(storageKey);
-  } catch (e) {}
-  activate(initial || buttons[0].getAttribute("data-tab-target"));
-})();
-
 // Confirmation modal, replacing native confirm(). confirmModal(message,
 // opts) returns a Promise<boolean> resolving true if the operator
 // confirmed. opts.danger styles the confirm button like a destructive
 // action instead of the default accent color. Built lazily (once, on
-// first use) and reused for every subsequent call, rather than one
-// element per confirm site, since only one confirmation is ever open at
-// a time. The message is set via textContent, never innerHTML, so it
-// can't be misread as allowing markup injection even though every
-// current caller's text is server-rendered, not user input.
+// first use) into document.body -- outside <main>, so it survives every
+// content swap untouched, same as the nav toggle above. The message is
+// set via textContent, never innerHTML, so it can't be misread as
+// allowing markup injection even though every current caller's text is
+// server-rendered, not user input.
 const confirmModal = (function () {
   let backdrop, messageEl, cancelBtn, okBtn, resolveFn;
 
@@ -163,98 +114,290 @@ const confirmModal = (function () {
 // browser's own dialog chrome. data-confirm-danger marks the action as
 // destructive, styling the modal's confirm button to match.
 //
+// Delegated on document rather than bound per-element, so it keeps
+// working on every form/button AppSocket swaps into <main> later without
+// needing to be re-run -- one binding for the life of the page, matching
+// AppSocket's own delegated link/submit interception below.
+//
 // A form is re-submitted via requestSubmit() after confirmation, which
-// re-fires the "submit" event — approvedForms tracks which submission
-// was already confirmed so it's let through exactly once instead of
-// looping back into this same handler. A button instead calls
+// re-fires the "submit" event; approvedForms tracks which submission was
+// already confirmed so it's let through exactly once instead of looping
+// back into this same handler. AppSocket's own submit interception checks
+// e.defaultPrevented before acting, so it correctly skips the first,
+// modal-triggering submit here and only intercepts the approved
+// resubmission (a fresh, non-prevented event). A button instead calls
 // button.form.requestSubmit(button), which respects that button's own
 // formaction/form attributes (e.g. a delete button pointing at a
-// different form, or overriding the enclosing form's action) — the
-// same thing a real click on it would have done.
+// different form) -- the same thing a real click on it would have done.
 (function () {
   const approvedForms = new WeakSet();
 
-  document.querySelectorAll("form[data-confirm]").forEach((form) => {
-    if (form.hasAttribute("data-ajax-link")) return; // handled inline where it's submitted, see below
-    form.addEventListener("submit", (e) => {
-      if (approvedForms.has(form)) {
-        approvedForms.delete(form);
-        return;
-      }
-      e.preventDefault();
-      confirmModal(form.getAttribute("data-confirm"), {
-        danger: form.hasAttribute("data-confirm-danger"),
-      }).then((ok) => {
-        if (!ok) return;
-        approvedForms.add(form);
-        form.requestSubmit();
-      });
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-confirm")) return;
+    if (approvedForms.has(form)) {
+      approvedForms.delete(form);
+      return;
+    }
+    e.preventDefault();
+    confirmModal(form.getAttribute("data-confirm"), {
+      danger: form.hasAttribute("data-confirm-danger"),
+    }).then((ok) => {
+      if (!ok) return;
+      approvedForms.add(form);
+      form.requestSubmit();
     });
   });
 
-  document.querySelectorAll("button[data-confirm]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      confirmModal(btn.getAttribute("data-confirm"), {
-        danger: btn.hasAttribute("data-confirm-danger"),
-      }).then((ok) => {
-        if (ok && btn.form) btn.form.requestSubmit(btn);
-      });
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-confirm]");
+    if (!btn) return;
+    e.preventDefault();
+    confirmModal(btn.getAttribute("data-confirm"), {
+      danger: btn.hasAttribute("data-confirm-danger"),
+    }).then((ok) => {
+      if (ok && btn.form) btn.form.requestSubmit(btn);
     });
   });
 })();
 
-// Polls /api/status and updates the dashboard status pill + stat grid.
-// Plain short-polling rather than SSE/WebSocket: for a handful of scalar
-// values refreshed every few seconds this is simpler and just as
-// "realtime" as it needs to be. A push-based stream (WebSocket) is worth
-// adding later for high-frequency data like live PTT/COS or log tailing.
-(function () {
-  const pill = document.querySelector("[data-status-pill]");
-  const uptimeEl = document.querySelector("[data-uptime]");
-  const hostnameEl = document.querySelector("[data-hostname]");
-  if (!pill) return;
+// AppSocket: one WebSocket connection per tab that replaces both full
+// browser navigation and the old per-node SSE live stream -- see
+// internal/server/ws.go's own doc comment for the server half and why
+// replaying a request over the socket and swapping the rendered result
+// into <main> is equivalent to a real navigation.
+//
+// Every form keeps its real action and every link keeps its real href.
+// Interception below is skipped whenever the socket isn't open (not yet
+// connected, or mid-reconnect), which is what makes "the app still works
+// with JS/WS unavailable" true by construction rather than a separately
+// maintained fallback path.
+const AppSocket = (function () {
+  let socket = null;
+  let everConnected = false;
+  let intentionalClose = false;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
+  let pendingPush = true;
+  let subscribedNodes = new Set();
 
-  async function poll() {
-    try {
-      const res = await fetch("/api/status", { credentials: "same-origin" });
-      if (!res.ok) throw new Error("status " + res.status);
-      const s = await res.json();
+  // A WebSocket's own JS API can't tell a permanent failure (the
+  // session expired -- GET /ws now bounces to /login instead of
+  // upgrading, e.g. after the whole process restarted on a reboot, not
+  // just Asterisk) apart from a transient one (the server is still
+  // coming back up), so this can't just retry forever hoping it
+  // eventually works. After this many failed attempts (~1 minute of
+  // capped backoff), fall back to a real reload -- if the session is
+  // gone that lands on a real login page instead of an infinite
+  // "Reconnecting…"; if the server was just slow to come back, the
+  // reload finds it and everything resumes normally either way.
+  const maxReconnectAttempts = 8;
 
-      pill.classList.toggle("up", s.asterisk_running);
-      pill.classList.toggle("down", !s.asterisk_running);
-      pill.querySelector(".label").textContent = s.asterisk_running
-        ? "Asterisk running"
-        : "Asterisk stopped";
+  const indicator = document.querySelector("[data-ws-status]");
 
-      if (uptimeEl) uptimeEl.textContent = s.uptime || "—";
-      if (hostnameEl) hostnameEl.textContent = s.hostname || "—";
-    } catch (e) {
-      pill.classList.remove("up");
-      pill.classList.add("down");
-      pill.querySelector(".label").textContent = "Status unavailable";
-    }
+  function setIndicator(state) {
+    if (!indicator) return;
+    indicator.hidden = state === "connected";
+    if (state === "reconnecting") indicator.textContent = "Reconnecting…";
+    else if (state === "connecting") indicator.textContent = "Connecting…";
   }
 
-  poll();
-  setInterval(poll, 4000);
-})();
+  function isOpen() {
+    return !!socket && socket.readyState === WebSocket.OPEN;
+  }
 
-// Live node data: subscribes to a per-node Server-Sent Events stream and
-// updates whichever pieces are present on the current page — Home's
-// on-air pill and connected-node chips (with "talking" markers), and/or
-// Stats's "Signal on input" cell and connection-history tables — as
-// state changes, no page reload. Each element is looked up with
-// querySelector and simply skipped if the page doesn't have it, so the
-// same script serves both pages without knowing which one it's on.
-// Progressive enhancement: every card is already rendered server-side,
-// so if EventSource is unavailable or a proxy blocks the stream, the
-// static snapshot simply stays put. DOM is built with
-// textContent/createElement so callsign/description text from the node
-// directory can never inject markup.
-(function () {
-  const cards = document.querySelectorAll("[data-live-node]");
-  if (!cards.length || typeof EventSource === "undefined") return;
+  function send(msg) {
+    if (!isOpen()) return false;
+    socket.send(JSON.stringify(msg));
+    return true;
+  }
+
+  function connect() {
+    setIndicator(everConnected ? "reconnecting" : "connecting");
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(proto + "//" + location.host + "/ws");
+
+    socket.addEventListener("open", () => {
+      reconnectDelay = 1000;
+      reconnectAttempts = 0;
+      setIndicator("connected");
+      const reconnected = everConnected;
+      everConnected = true;
+      syncLiveSubscriptions(true);
+      if (reconnected) {
+        // The connection dropped and came back (an Asterisk restart or
+        // reboot triggered from the System page, most likely) --
+        // refresh whatever's currently on screen instead of leaving it
+        // stale with no indication anything changed.
+        navigateTo(location.pathname + location.search, { push: false });
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      document.querySelectorAll("[data-live-indicator]").forEach((el) => el.classList.remove("on"));
+      if (intentionalClose) return;
+      reconnectAttempts++;
+      if (reconnectAttempts > maxReconnectAttempts) {
+        location.reload();
+        return;
+      }
+      setIndicator("reconnecting");
+      reconnectTimer = setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    });
+
+    socket.addEventListener("error", () => {
+      socket.close();
+    });
+
+    socket.addEventListener("message", (ev) => {
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch (e) {
+        return;
+      }
+      if (msg.type === "page") {
+        applyPage(msg.url, msg.html, pendingPush);
+      } else if (msg.type === "live" || msg.type === "history") {
+        onLive(msg.type, msg.node, msg.data);
+      }
+    });
+  }
+
+  window.addEventListener("beforeunload", () => {
+    intentionalClose = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (socket) socket.close();
+  });
+
+  // ---- page navigation/submit replay ----
+
+  function navigateTo(url, opts) {
+    opts = opts || {};
+    if (!isOpen()) {
+      location.href = url;
+      return;
+    }
+    pendingPush = opts.push !== false;
+    send({ type: "nav", url: url });
+  }
+
+  function submitForm(method, url, body, opts) {
+    opts = opts || {};
+    if (!isOpen()) return false;
+    pendingPush = opts.push !== false;
+    send({ type: "submit", method: method, url: url, body: body });
+    return true;
+  }
+
+  function applyPage(url, html, push) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const newMain = doc.querySelector("main");
+    const liveMain = document.querySelector("main");
+    if (!newMain || !liveMain) {
+      showRawFallback(html);
+      return;
+    }
+    // A missing url (see ws.go's replay's own doc comment) means the
+    // server has no independently GET-able page to report -- e.g. a
+    // handler that rendered in place without redirecting. Treat exactly
+    // like "same URL as now": keep the address bar and scroll position
+    // untouched, just swap the content.
+    const currentPath = location.pathname + location.search;
+    const sameUrl = !url || url === currentPath;
+    const scrollY = sameUrl ? window.scrollY : 0;
+    liveMain.innerHTML = newMain.innerHTML;
+    if (url && !sameUrl && push) {
+      history.pushState({}, "", url);
+    }
+    window.scrollTo(0, scrollY);
+    document.dispatchEvent(new CustomEvent("app:content-swapped"));
+  }
+
+  // A bare error response (a handler that never reached s.render(), e.g.
+  // a plain http.Error/http.NotFound) has no <main> for applyPage to
+  // find -- shown as a flash-style banner instead of attempting a
+  // partial swap that would find nothing.
+  function showRawFallback(text) {
+    const liveMain = document.querySelector("main");
+    if (!liveMain) return;
+    const pre = document.createElement("pre");
+    pre.className = "flash error";
+    pre.textContent = typeof text === "string" && text.trim() ? text : "Something went wrong loading that page.";
+    liveMain.replaceChildren(pre);
+  }
+
+  window.addEventListener("popstate", () => {
+    navigateTo(location.pathname + location.search, { push: false });
+  });
+
+  // Same-origin link clicks -> replayed nav. A modified click (new tab,
+  // new window, etc.), a different-origin href, or an explicit opt-out
+  // all fall through to the browser's own default handling untouched.
+  document.addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest("a[href]");
+    if (!a || a.target || a.hasAttribute("download") || a.hasAttribute("data-full-reload")) return;
+    let url;
+    try {
+      url = new URL(a.href, location.href);
+    } catch (err) {
+      return;
+    }
+    if (url.origin !== location.origin || !isOpen()) return;
+    e.preventDefault();
+    navigateTo(url.pathname + url.search, { push: true });
+  });
+
+  // Form submits -> replayed submit. Skips multipart forms (file
+  // upload -- not a fit for a JSON-message socket) and anything already
+  // prevented by the confirm-modal handler above (which re-dispatches a
+  // fresh, non-prevented submit once approved).
+  document.addEventListener("submit", (e) => {
+    if (e.defaultPrevented) return;
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.enctype === "multipart/form-data" || form.hasAttribute("data-full-reload")) return;
+    if (!isOpen()) return;
+    const method = (form.getAttribute("method") || "GET").toUpperCase();
+    const action = form.getAttribute("action") || location.pathname;
+    const params = new URLSearchParams(new FormData(form));
+    // FormData omits the submit button; carry which one was clicked
+    // (several forms on this page name their submit buttons "action" to
+    // distinguish, e.g. link vs unlink).
+    if (e.submitter && e.submitter.name) params.set(e.submitter.name, e.submitter.value);
+    e.preventDefault();
+    submitForm(method, action, params.toString(), { push: true });
+  });
+
+  // ---- live status push (replaces the old per-node EventSource) ----
+
+  function currentLiveNodes() {
+    const set = new Set();
+    document.querySelectorAll("[data-live-node]").forEach((card) => {
+      const n = card.getAttribute("data-live-node");
+      if (n) set.add(n);
+    });
+    return set;
+  }
+
+  // Called after every content swap (new [data-live-node] cards may have
+  // appeared or disappeared) and once on (re)connect, where forceAll is
+  // true because a new server-side connection has no memory of what was
+  // previously subscribed.
+  function syncLiveSubscriptions(forceAll) {
+    const wanted = currentLiveNodes();
+    const previous = forceAll ? new Set() : subscribedNodes;
+    wanted.forEach((n) => {
+      if (!previous.has(n)) send({ type: "subscribeLive", node: n });
+    });
+    previous.forEach((n) => {
+      if (!wanted.has(n)) send({ type: "unsubscribeLive", node: n });
+    });
+    subscribedNodes = wanted;
+  }
 
   function renderPill(container, receiving) {
     const pill = document.createElement("span");
@@ -263,9 +406,7 @@ const confirmModal = (function () {
     dot.className = "dot";
     pill.appendChild(dot);
     pill.appendChild(
-      document.createTextNode(
-        receiving ? "On the air — signal on input" : "Idle — no signal on input"
-      )
+      document.createTextNode(receiving ? "On the air — signal on input" : "Idle — no signal on input")
     );
     container.replaceChildren(pill);
   }
@@ -307,191 +448,146 @@ const confirmModal = (function () {
     container.replaceChildren(frag);
   }
 
-  cards.forEach((card) => {
-    const node = card.getAttribute("data-live-node");
-    const pillBox = card.querySelector("[data-live-pill]");
-    const connBox = card.querySelector("[data-live-connected]");
-    const signalCell = card.querySelector("[data-live-signal]");
-    const indicator = card.querySelector("[data-live-indicator]");
-
-    // Scoped by node number, not just presence: with more than one node
-    // configured, an unscoped querySelector would find whichever history
-    // box happens to be first in the document and every node's stream
-    // would write into it instead of its own.
-    const historyBox = document.querySelector(
-      '[data-live-history="' + CSS.escape(node) + '"]'
-    );
-
-    const es = new EventSource("/nodes/" + encodeURIComponent(node) + "/live", {
-      withCredentials: true,
-    });
-
-    // "live" event: the right-now card (pill, connected chips, signal cell).
-    es.addEventListener("live", (ev) => {
-      let s;
-      try {
-        s = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
-      if (indicator) indicator.classList.add("on");
-      if (pillBox) renderPill(pillBox, s.receiving);
-      if (connBox) renderConnected(connBox, s.connected);
-      if (signalCell && s.signalOnInput) signalCell.textContent = s.signalOnInput;
-    });
-
-    // "history" event: the whole history card, re-rendered server-side and
-    // swapped in, so the connection-history tables update without a reload
-    // and without duplicating their markup here. The payload is a
-    // JSON-encoded HTML string produced by the same template as page load.
-    es.addEventListener("history", (ev) => {
-      if (!historyBox) return;
-      let html;
-      try {
-        html = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
-      if (typeof html === "string" && html.length) historyBox.innerHTML = html;
-    });
-
-    es.onerror = () => {
-      // EventSource retries on its own; just dim the live indicator while
-      // the connection is down so the card doesn't look falsely live.
-      if (indicator) indicator.classList.remove("on");
-    };
-  });
-})();
-
-// Link/unlink without a full-page reload: submit the quick-connect form
-// in the background and show the result inline. The live stream above
-// then reflects the connection appearing or dropping on its own. Falls
-// back to a normal form POST if fetch is unavailable.
-(function () {
-  const forms = document.querySelectorAll("form[data-ajax-link]");
-  if (!forms.length || typeof fetch === "undefined") return;
-
-  forms.forEach((form) => {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const confirmMsg = form.getAttribute("data-confirm");
-      if (confirmMsg && !(await confirmModal(confirmMsg, { danger: form.hasAttribute("data-confirm-danger") }))) return;
-
-      const result = form.querySelector("[data-link-result]");
-      const params = new URLSearchParams(new FormData(form));
-      // FormData omits the submit button; carry which one was clicked.
-      if (e.submitter && e.submitter.name) {
-        params.set(e.submitter.name, e.submitter.value);
-      }
-
-      const buttons = form.querySelectorAll("button");
-      buttons.forEach((b) => (b.disabled = true));
-
-      function show(ok, msg) {
-        if (!result) return;
-        result.hidden = false;
-        result.textContent = msg;
-        result.classList.toggle("ok", ok);
-        result.classList.toggle("error", !ok);
-      }
-
-      // getAttribute, not form.action: the submit buttons are named
-      // "action", which DOM-clobbers the form's .action URL property into
-      // returning the button collection instead of the endpoint.
-      const endpoint = form.getAttribute("action");
-
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          body: params,
-          headers: { Accept: "application/json" },
-          credentials: "same-origin",
-        });
-        const j = await res.json();
-        show(!!j.ok, j.message || (j.ok ? "Done" : "Failed"));
-      } catch (err) {
-        show(false, "Request failed — check the connection and try again.");
-      } finally {
-        buttons.forEach((b) => (b.disabled = false));
-      }
-    });
-  });
-})();
-
-// Node page "radio hardware" toggle: shows either the existing-device
-// picker or the create-a-new-device sub-form depending on which radio
-// button is selected, so both stay in the same form (one POST covers
-// node + optional new device) without cluttering the page with an
-// always-visible device-creation form most edits don't need.
-(function () {
-  const radios = document.querySelectorAll("[data-radio-mode]");
-  if (!radios.length) return;
-  const sections = {
-    existing: document.querySelector('[data-radio-mode-section="existing"]'),
-    new: document.querySelector('[data-radio-mode-section="new"]'),
-  };
-  function apply() {
-    const checked = document.querySelector("[data-radio-mode]:checked");
-    const mode = checked ? checked.value : "existing";
-    for (const key in sections) {
-      if (sections[key]) sections[key].style.display = key === mode ? "" : "none";
+  // DOM built with textContent/createElement throughout (renderPill/
+  // renderConnected above) so callsign/description text from the node
+  // directory can never inject markup.
+  function onLive(type, node, data) {
+    const card = document.querySelector('[data-live-node="' + CSS.escape(node) + '"]');
+    if (!card) return; // subscribed from a page we've since swapped away from
+    if (type === "live") {
+      const indicatorEl = card.querySelector("[data-live-indicator]");
+      const pillBox = card.querySelector("[data-live-pill]");
+      const connBox = card.querySelector("[data-live-connected]");
+      const signalCell = card.querySelector("[data-live-signal]");
+      if (indicatorEl) indicatorEl.classList.add("on");
+      if (pillBox) renderPill(pillBox, data.receiving);
+      if (connBox) renderConnected(connBox, data.connected);
+      if (signalCell && data.signalOnInput) signalCell.textContent = data.signalOnInput;
+    } else {
+      const historyBox = document.querySelector('[data-live-history="' + CSS.escape(node) + '"]');
+      if (historyBox && typeof data === "string" && data.length) historyBox.innerHTML = data;
     }
   }
-  radios.forEach((r) => r.addEventListener("change", apply));
-  apply();
+
+  document.addEventListener("app:content-swapped", () => syncLiveSubscriptions(false));
+
+  connect();
+
+  return { navigateTo: navigateTo, isOpen: isOpen };
 })();
 
-// Generalized version of the toggle above for a page with more than one
-// independent radio group (e.g. the WX courtesy tone form's separate
-// Normal/WX "tone" vs "sound file" choices) -- each radio's own name
-// attribute is the group key, so any number of groups can share this one
-// block instead of duplicating the IIFE per group. A section is shown
-// when data-type-toggle-section="<radio name>:<radio value>" matches the
-// checked radio in that name's group.
-(function () {
+// Node page tabs: a purely client-side grouping of already-independent
+// form sections (each [data-tab-panel] wraps one or more complete,
+// unmodified forms) into tabs. The active tab is remembered per node in
+// localStorage and re-applied here -- both on first load and again after
+// every AppSocket content swap, since saving a form always re-renders
+// this same page fresh (see this function's own call sites below).
+// Progressive enhancement: every panel is plain visible markup with no
+// hiding CSS of its own, so with JS disabled (or before this runs) the
+// page is exactly the old single long page, nothing missing.
+function initTabs() {
+  const panels = document.querySelectorAll("[data-tab-panel]");
+  const tabsBar = document.querySelector(".tabs[data-node-number]");
+  const buttons = document.querySelectorAll("[data-tab-target]");
+  if (!panels.length || !buttons.length) return;
+
+  const storageKey = "hamvoip-node-tab-" + (tabsBar ? tabsBar.getAttribute("data-node-number") : "");
+
+  function activate(tab) {
+    let matched = false;
+    panels.forEach((p) => {
+      const isMatch = p.getAttribute("data-tab-panel") === tab;
+      p.hidden = !isMatch;
+      if (isMatch) matched = true;
+    });
+    if (!matched) {
+      panels.forEach((p, i) => (p.hidden = i !== 0));
+      tab = panels[0].getAttribute("data-tab-panel");
+    }
+    buttons.forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab-target") === tab));
+    try {
+      localStorage.setItem(storageKey, tab);
+    } catch (e) {
+      // Private browsing / storage disabled -- tab switching still
+      // works for this page view, it just won't be remembered.
+    }
+  }
+
+  buttons.forEach((b) => {
+    b.addEventListener("click", () => activate(b.getAttribute("data-tab-target")));
+  });
+
+  let initial = null;
+  try {
+    initial = localStorage.getItem(storageKey);
+  } catch (e) {}
+  activate(initial || buttons[0].getAttribute("data-tab-target"));
+}
+
+// Node page "radio hardware" toggle and the generalized multi-group
+// version of it (e.g. the WX courtesy tone form's separate Normal/WX
+// "tone" vs "sound file" choices): a section is shown when
+// data-radio-mode-section="existing"/"new", or
+// data-type-toggle-section="<radio name>:<radio value>", matches the
+// currently checked radio. The "change" handling is delegated (works on
+// any swapped-in form without rebinding), but the initial visibility
+// still has to be (re)applied whenever a form appears, since a freshly
+// swapped-in form's checked radio might not match what was visible
+// before.
+document.addEventListener("change", (e) => {
+  if (e.target.matches("[data-radio-mode]")) applyRadioMode();
+  else if (e.target.matches("[data-type-toggle]")) applyTypeToggle();
+});
+
+function applyRadioMode() {
+  const radios = document.querySelectorAll("[data-radio-mode]");
+  if (!radios.length) return;
+  const checked = document.querySelector("[data-radio-mode]:checked");
+  const mode = checked ? checked.value : "existing";
+  ["existing", "new"].forEach((key) => {
+    const section = document.querySelector('[data-radio-mode-section="' + key + '"]');
+    if (section) section.style.display = key === mode ? "" : "none";
+  });
+}
+
+function applyTypeToggle() {
   const radios = document.querySelectorAll("[data-type-toggle]");
   if (!radios.length) return;
   const groups = new Set();
   radios.forEach((r) => groups.add(r.name));
-  function apply() {
-    groups.forEach((name) => {
-      const checked = document.querySelector(`[data-type-toggle][name="${name}"]:checked`);
-      const value = checked ? checked.value : "";
-      document.querySelectorAll(`[data-type-toggle-section^="${name}:"]`).forEach((section) => {
-        const sectionValue = section.getAttribute("data-type-toggle-section").split(":")[1];
-        section.style.display = sectionValue === value ? "" : "none";
-      });
-    });
-  }
-  radios.forEach((r) => r.addEventListener("change", apply));
-  apply();
-})();
-
-// Connections page "quick action" buttons: fills the DTMF sequence
-// field with <prefix><target node>, so the operator can review it
-// before sending rather than the click sending anything directly.
-(function () {
-  const target = document.querySelector("[data-target-node]");
-  const digitsField = document.querySelector("[data-dtmf-field]");
-  if (!digitsField) return;
-  document.querySelectorAll("[data-fill-digits]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const prefix = btn.getAttribute("data-fill-digits");
-      const node = target ? target.value.trim() : "";
-      digitsField.value = prefix + node;
-      digitsField.focus();
+  groups.forEach((name) => {
+    const checked = document.querySelector(`[data-type-toggle][name="${name}"]:checked`);
+    const value = checked ? checked.value : "";
+    document.querySelectorAll(`[data-type-toggle-section^="${name}:"]`).forEach((section) => {
+      const sectionValue = section.getAttribute("data-type-toggle-section").split(":")[1];
+      section.style.display = sectionValue === value ? "" : "none";
     });
   });
-})();
+}
+
+// Connections/Commands tab "quick action" buttons: fills the DTMF
+// sequence field with <prefix><target node>, so the operator can review
+// it before sending rather than the click sending anything directly.
+// Delegated, so it needs no re-binding after a swap.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-fill-digits]");
+  if (!btn) return;
+  const digitsField = document.querySelector("[data-dtmf-field]");
+  if (!digitsField) return;
+  const target = document.querySelector("[data-target-node]");
+  const prefix = btn.getAttribute("data-fill-digits");
+  const node = target ? target.value.trim() : "";
+  digitsField.value = prefix + node;
+  digitsField.focus();
+});
 
 // "Play" buttons next to each Custom sound files row. One shared Audio
-// element for the whole page (not one per row) so starting a second
-// clip always stops whichever one was already playing, and clicking the
-// same row's button again toggles it off rather than restarting it.
+// element for the whole page (not one per row) so starting a second clip
+// always stops whichever one was already playing, and clicking the same
+// row's button again toggles it off rather than restarting it.
+// Delegated (click target + shared Audio/activeBtn live in this closure,
+// independent of any particular swap), so it needs no re-binding either.
 (function () {
-  const buttons = document.querySelectorAll("[data-play-sound]");
-  if (!buttons.length) return;
   const audio = new Audio();
   let activeBtn = null;
 
@@ -503,64 +599,123 @@ const confirmModal = (function () {
   }
   audio.addEventListener("ended", stop);
 
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const wasActive = activeBtn === btn;
-      stop();
-      if (wasActive) return; // this click was the toggle-off
-      audio.src = btn.getAttribute("data-play-sound");
-      audio.play();
-      btn.textContent = "Stop";
-      activeBtn = btn;
-    });
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-play-sound]");
+    if (!btn) return;
+    const wasActive = activeBtn === btn;
+    stop();
+    if (wasActive) return; // this click was the toggle-off
+    audio.src = btn.getAttribute("data-play-sound");
+    audio.play();
+    btn.textContent = "Stop";
+    activeBtn = btn;
   });
 })();
 
 // "Preview" button on the "Create from text" card: synthesizes speech
 // for whatever voice/text is currently filled in and plays it
-// immediately, via fetch rather than a normal form submission — a full
-// page reload just to hear a few seconds of audio (and losing whatever
-// else was mid-edit on the page) would be a bad way to let someone try
-// a few wordings/voices before committing to "Generate & save".
-(function () {
-  const btn = document.querySelector("[data-tts-preview]");
+// immediately, via fetch rather than a form submission -- generating a
+// preview isn't a navigation, and the audio response is a blob AppSocket
+// deliberately doesn't handle (see its own doc comment: multipart/blob
+// endpoints stay on plain fetch). Delegated; every field is looked up
+// fresh at click time, so it always reads whichever preview button/form
+// is currently on screen.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-tts-preview]");
   if (!btn) return;
   const voiceField = document.getElementById("tts_voice");
   const engineField = document.getElementById("tts_engine");
   const textField = document.getElementById("tts_text");
   const status = document.querySelector("[data-tts-preview-status]");
-  const audio = new Audio();
+  if (!textField) return;
 
-  btn.addEventListener("click", async () => {
-    const text = textField.value.trim();
-    if (!text) {
-      textField.focus();
+  const text = textField.value.trim();
+  if (!text) {
+    textField.focus();
+    return;
+  }
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = "Generating…";
+  if (status) status.textContent = "";
+  try {
+    const body = new URLSearchParams({
+      tts_voice: voiceField ? voiceField.value : "",
+      tts_text: text,
+      tts_engine: engineField ? engineField.value : "",
+    });
+    const resp = await fetch(btn.getAttribute("data-tts-preview"), { method: "POST", body });
+    if (!resp.ok) {
+      if (status) status.textContent = await resp.text();
       return;
     }
-    audio.pause();
-    btn.disabled = true;
-    const originalLabel = btn.textContent;
-    btn.textContent = "Generating…";
-    if (status) status.textContent = "";
+    const blob = await resp.blob();
+    const audio = new Audio();
+    audio.src = URL.createObjectURL(blob);
+    audio.play();
+  } catch (err) {
+    if (status) status.textContent = "Couldn't reach the server to generate a preview.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+});
+
+// Stats page's dashboard status pill + stat grid. Plain short-polling
+// rather than a push -- for a handful of scalar values refreshed every
+// few seconds this is simpler and just as "realtime" as it needs to be.
+// This card only exists on Stats, so the interval has to be started and
+// stopped as that page comes and goes across content swaps rather than
+// running for the life of the tab -- statusPollTimer tracks the one
+// currently-running interval (if any) so re-initializing never stacks a
+// second one on top.
+let statusPollTimer = null;
+function initStatusPoll() {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+  const pill = document.querySelector("[data-status-pill]");
+  if (!pill) return;
+
+  async function poll() {
     try {
-      const body = new URLSearchParams({
-        tts_voice: voiceField.value,
-        tts_text: text,
-        tts_engine: engineField ? engineField.value : "",
-      });
-      const resp = await fetch(btn.getAttribute("data-tts-preview"), { method: "POST", body });
-      if (!resp.ok) {
-        if (status) status.textContent = await resp.text();
-        return;
-      }
-      const blob = await resp.blob();
-      audio.src = URL.createObjectURL(blob);
-      audio.play();
-    } catch (err) {
-      if (status) status.textContent = "Couldn't reach the server to generate a preview.";
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalLabel;
+      const res = await fetch("/api/status", { credentials: "same-origin" });
+      if (!res.ok) throw new Error("status " + res.status);
+      const s = await res.json();
+
+      pill.classList.toggle("up", s.asterisk_running);
+      pill.classList.toggle("down", !s.asterisk_running);
+      pill.querySelector(".label").textContent = s.asterisk_running ? "Asterisk running" : "Asterisk stopped";
+
+      const uptimeEl = document.querySelector("[data-uptime]");
+      const hostnameEl = document.querySelector("[data-hostname]");
+      if (uptimeEl) uptimeEl.textContent = s.uptime || "—";
+      if (hostnameEl) hostnameEl.textContent = s.hostname || "—";
+    } catch (e) {
+      pill.classList.remove("up");
+      pill.classList.add("down");
+      pill.querySelector(".label").textContent = "Status unavailable";
     }
-  });
-})();
+  }
+
+  poll();
+  statusPollTimer = setInterval(poll, 4000);
+}
+
+// Runs every stateful, content-scoped init above once on first load and
+// again after every AppSocket content swap (a saved form, a link
+// navigation -- anything that replaces <main>). Each function re-scans
+// the live DOM itself and is safe to call repeatedly/on a page that
+// doesn't have its markup at all (each starts with its own presence
+// check), so there's no "did this page change since last time" logic
+// needed here.
+function initPageFeatures() {
+  initTabs();
+  applyRadioMode();
+  applyTypeToggle();
+  initStatusPoll();
+}
+
+document.addEventListener("app:content-swapped", initPageFeatures);
+initPageFeatures();

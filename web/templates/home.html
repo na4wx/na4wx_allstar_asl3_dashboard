@@ -36,7 +36,7 @@
     <h2 style="margin:0">Connect node {{.Number}} to another node</h2>
     {{template "help" "Sends the standard AllStarLink touch-tone command to link (*3) or unlink (*1) — the same thing you'd key in over the air, without needing a radio in your hand. The result shows up in the card above once the connection changes, and in more detail on the Stats page."}}
   </div>
-  <form method="post" action="/nodes/{{.Number}}/link" data-ajax-link data-confirm="Send this link/unlink command to node {{.Number}} now?">
+  <form method="post" action="/nodes/{{.Number}}/link" data-confirm="Send this link/unlink command to node {{.Number}} now?">
     <div class="row">
       <div class="field">
         <label for="quick_target_{{.Number}}">Other node's number</label>
@@ -48,7 +48,6 @@
       <button type="submit" name="action" value="link" class="primary">Link</button>
       <button type="submit" name="action" value="unlink">Unlink</button>
     </div>
-    <div class="link-result" data-link-result hidden></div>
   </form>
 </div>
 {{end}}

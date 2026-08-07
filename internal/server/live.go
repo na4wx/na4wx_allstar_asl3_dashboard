@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"sync"
 	"time"
 
@@ -15,19 +12,16 @@ import (
 )
 
 // livePollInterval is how often a node's live state is re-read while at
-// least one browser is watching it over SSE. Short, because the point of
-// this stream is to catch someone keying up -- a PTT can last only a
-// second or two. It costs a few `asterisk -rx` calls per tick, but only
-// while a browser actually has the page open (the poller starts on the
-// first subscriber and stops when the last one leaves).
+// least one browser tab is watching it (see ws.go's subscribeLive).
+// Short, because the point of this stream is to catch someone keying up
+// -- a PTT can last only a second or two. It costs a few `asterisk -rx`
+// calls per tick, but only while a browser actually has the page open
+// (the poller starts on the first subscriber and stops when the last
+// one leaves).
 const livePollInterval = 2 * time.Second
 
 // liveFetchTimeout bounds one round of CLI reads.
 const liveFetchTimeout = 8 * time.Second
-
-// liveKeepalive is how often an SSE comment is sent on an otherwise idle
-// connection, so proxies and load balancers don't treat it as dead.
-const liveKeepalive = 25 * time.Second
 
 // liveNodeState is the moment-to-moment state pushed to the "Right now"
 // card: whether the local receiver is keyed, the raw "Signal on input"
@@ -41,8 +35,9 @@ type liveNodeState struct {
 
 // snapshotNode reads everything the live stream pushes in one pass: the
 // "Right now" state, and the two connection-history tables rendered to
-// an HTML fragment. It's the single source for both, shared by the SSE
-// poller and the initial-on-connect snapshot so they can't drift.
+// an HTML fragment. It's the single source for both, shared by the
+// background poller and ws.go's immediate on-subscribe snapshot so they
+// can't drift.
 //
 // It also records the reading into the rolling history (record is
 // deduped on the connected set, so this is what makes the history table
@@ -108,30 +103,31 @@ func (s *Server) markKeyed(ctx context.Context, number string, connected []rptst
 	}
 }
 
-// sseMessage is one named Server-Sent Event: an event name ("live" or
-// "history") and its already-serialized data.
-type sseMessage struct {
+// liveMsg is one named live-status event ("live" or "history") and its
+// already-serialized data, forwarded onto a browser tab's /ws connection
+// by ws.go's forwardLive.
+type liveMsg struct {
 	event string
 	data  []byte
 }
 
 // liveHub fans out per-node live state to any number of connected
-// browsers over SSE. One background poller runs per node that has at
-// least one subscriber; it broadcasts an event only when that part of
-// the state actually changes, so an idle node produces no traffic beyond
-// keepalives.
+// browser tabs (see ws.go's subscribeLive/forwardLive). One background
+// poller runs per node that has at least one subscriber; it broadcasts
+// an event only when that part of the state actually changes, so an
+// idle node produces no traffic.
 type liveHub struct {
 	server *Server
 
 	mu       sync.Mutex
-	channels map[string]map[chan sseMessage]struct{}
+	channels map[string]map[chan liveMsg]struct{}
 	stops    map[string]chan struct{}
 }
 
 func newLiveHub(s *Server) *liveHub {
 	return &liveHub{
 		server:   s,
-		channels: make(map[string]map[chan sseMessage]struct{}),
+		channels: make(map[string]map[chan liveMsg]struct{}),
 		stops:    make(map[string]chan struct{}),
 	}
 }
@@ -140,12 +136,12 @@ func newLiveHub(s *Server) *liveHub {
 // an unsubscribe func. The first subscriber for a node starts its
 // poller. The channel is buffered and lossy on the sending side (see
 // broadcast), so a slow reader can't stall the poller or other clients.
-func (h *liveHub) subscribe(node string) (<-chan sseMessage, func()) {
-	ch := make(chan sseMessage, 8)
+func (h *liveHub) subscribe(node string) (<-chan liveMsg, func()) {
+	ch := make(chan liveMsg, 8)
 	h.mu.Lock()
 	subs := h.channels[node]
 	if subs == nil {
-		subs = make(map[chan sseMessage]struct{})
+		subs = make(map[chan liveMsg]struct{})
 		h.channels[node] = subs
 		stop := make(chan struct{})
 		h.stops[node] = stop
@@ -156,7 +152,7 @@ func (h *liveHub) subscribe(node string) (<-chan sseMessage, func()) {
 	return ch, func() { h.unsubscribe(node, ch) }
 }
 
-func (h *liveHub) unsubscribe(node string, ch chan sseMessage) {
+func (h *liveHub) unsubscribe(node string, ch chan liveMsg) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	subs := h.channels[node]
@@ -179,7 +175,7 @@ func (h *liveHub) unsubscribe(node string, ch chan sseMessage) {
 // broadcast delivers msg to every subscriber of node, dropping it for any
 // whose buffer is full rather than blocking -- a stalled client falls
 // behind and catches up on the next change, never holding up the rest.
-func (h *liveHub) broadcast(node string, msg sseMessage) {
+func (h *liveHub) broadcast(node string, msg liveMsg) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.channels[node] {
@@ -210,11 +206,11 @@ func (h *liveHub) poll(node string, stop chan struct{}) {
 
 		if b, err := json.Marshal(live); err == nil && string(b) != lastLive {
 			lastLive = string(b)
-			h.broadcast(node, sseMessage{event: "live", data: b})
+			h.broadcast(node, liveMsg{event: "live", data: b})
 		}
 		if b, err := json.Marshal(historyHTML); err == nil && string(b) != lastHistory {
 			lastHistory = string(b)
-			h.broadcast(node, sseMessage{event: "history", data: b})
+			h.broadcast(node, liveMsg{event: "history", data: b})
 		}
 	}
 
@@ -224,85 +220,6 @@ func (h *liveHub) poll(node string, stop chan struct{}) {
 			return
 		case <-ticker.C:
 			tick()
-		}
-	}
-}
-
-// handleNodeLive streams a node's live state to the browser as
-// Server-Sent Events. It sends the current state immediately on connect
-// (so the card doesn't wait for the first change), then one event per
-// change, plus periodic keepalive comments. The stream ends when the
-// browser disconnects (request context cancelled).
-//
-// This is a progressive enhancement: the "Right now" card is already
-// rendered server-side on page load, so if EventSource is unavailable or
-// blocked by a proxy, the card still shows a correct snapshot -- it just
-// won't update without a reload.
-func (s *Server) handleNodeLive(w http.ResponseWriter, r *http.Request) {
-	number := r.PathValue("node")
-	if _, err := s.cfg.LoadNode(number); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // tell nginx not to buffer the stream
-
-	ctx := r.Context()
-
-	writeEvent := func(msg sseMessage) bool {
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", msg.event, msg.data); err != nil {
-			return false
-		}
-		flusher.Flush()
-		return true
-	}
-
-	// Immediate snapshot of both events, so a freshly-connected client
-	// isn't blank until the poller happens to see a change.
-	initCtx, cancel := context.WithTimeout(ctx, liveFetchTimeout)
-	live, historyHTML := s.snapshotNode(initCtx, number)
-	cancel()
-	if b, err := json.Marshal(live); err == nil {
-		if !writeEvent(sseMessage{event: "live", data: b}) {
-			return
-		}
-	}
-	if b, err := json.Marshal(historyHTML); err == nil {
-		if !writeEvent(sseMessage{event: "history", data: b}) {
-			return
-		}
-	}
-
-	ch, unsubscribe := s.live.subscribe(number)
-	defer unsubscribe()
-
-	keepalive := time.NewTicker(liveKeepalive)
-	defer keepalive.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-ch:
-			if !ok {
-				return
-			}
-			if !writeEvent(msg) {
-				return
-			}
-		case <-keepalive.C:
-			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
 		}
 	}
 }

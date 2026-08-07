@@ -17,19 +17,22 @@
       <img src="/static/img/icon.png" alt="" class="brand-mark">
       NA4WX Allstar Dashboard
     </a>
-    <button type="button" class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false">
-      <span></span><span></span><span></span>
-    </button>
-    <nav data-nav>
-      <a href="/">Home</a>
-      <a href="/nodes">Nodes</a>
-      <a href="/stats">Status</a>
-      <a href="/system">System</a>
-      <a href="/config">Raw Config</a>
-      <form action="/logout" method="post">
-        <button type="submit">Log out</button>
-      </form>
-    </nav>
+    <div class="topbar-right">
+      <span class="ws-status" data-ws-status hidden>Connecting…</span>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <nav data-nav>
+        <a href="/">Home</a>
+        <a href="/nodes">Nodes</a>
+        <a href="/stats">Status</a>
+        <a href="/system">System</a>
+        <a href="/config">Raw Config</a>
+        <form action="/logout" method="post">
+          <button type="submit">Log out</button>
+        </form>
+      </nav>
+    </div>
   </header>
   {{if restartNeeded}}
   <div class="restart-bar">
