@@ -35,6 +35,60 @@
   });
 })();
 
+// Keeps .help-tip tooltips inside the viewport. The CSS default centers
+// a tooltip on its icon and opens it upward -- fine when the icon has
+// room on both sides and above, but several real headings don't:
+// Home's "Right now" card sits right under the sticky header (no room
+// above), and SkywarnPlus's Pushover/SkyDescribe headings and node
+// edit's WX courtesy tone heading put their help icon on its own line
+// right after a block-level <h2>, hard against the card's left edge
+// (no room to the left of center). Confirmed each of those pushed part
+// of the tooltip off-screen with no way to read it.
+//
+// Delegated on mouseover/focusin (not mouseenter/focus, neither of
+// which bubble) so every .help icon is covered, including ones
+// AppSocket swaps in later, with no per-element re-binding needed.
+// getBoundingClientRect() forces the browser to apply the :hover/
+// :focus-within style (and therefore display:block) before measuring,
+// so the rect reflects the tooltip's real, current position.
+(function () {
+  const TOOLTIP_MARGIN = 12;
+
+  function positionHelpTip(help) {
+    const tip = help.querySelector(".help-tip");
+    if (!tip) return;
+
+    // Re-measured from this same neutral state every time (not from
+    // whatever an earlier hover already shifted it to), so corrections
+    // never compound across repeated hovers.
+    tip.style.setProperty("--tip-shift", "0px");
+    tip.classList.remove("tip-below");
+
+    let rect = tip.getBoundingClientRect();
+    if (rect.top < TOOLTIP_MARGIN) {
+      tip.classList.add("tip-below");
+      rect = tip.getBoundingClientRect();
+    }
+
+    let shift = 0;
+    if (rect.right > window.innerWidth - TOOLTIP_MARGIN) {
+      shift = window.innerWidth - TOOLTIP_MARGIN - rect.right;
+    } else if (rect.left < TOOLTIP_MARGIN) {
+      shift = TOOLTIP_MARGIN - rect.left;
+    }
+    if (shift) tip.style.setProperty("--tip-shift", shift + "px");
+  }
+
+  document.addEventListener("mouseover", (e) => {
+    const help = e.target.closest(".help");
+    if (help) positionHelpTip(help);
+  });
+  document.addEventListener("focusin", (e) => {
+    const help = e.target.closest(".help");
+    if (help) positionHelpTip(help);
+  });
+})();
+
 // Confirmation modal, replacing native confirm(). confirmModal(message,
 // opts) returns a Promise<boolean> resolving true if the operator
 // confirmed. opts.danger styles the confirm button like a destructive

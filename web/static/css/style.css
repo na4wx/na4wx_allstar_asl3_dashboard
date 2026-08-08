@@ -677,7 +677,15 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   position: absolute;
   bottom: 145%;
   left: 50%;
-  transform: translateX(-50%);
+  /* --tip-shift is a pixel offset app.js's positionHelpTip sets right
+     before the tooltip becomes visible, pulling it back onto the
+     screen when centering it on the icon (the plain -50% below) would
+     push part of it past the viewport edge -- confirmed to happen for
+     real on several icons sitting close to a narrow card's left edge
+     (e.g. Home's "Right now" title, SkywarnPlus's Pushover/SkyDescribe
+     headings, node edit's WX courtesy tone heading). 0px when unset,
+     so this is a no-op until JS actually needs to correct it. */
+  transform: translateX(calc(-50% + var(--tip-shift, 0px)));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -691,6 +699,14 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   text-align: left;
   box-shadow: var(--shadow-lg);
   z-index: 40;
+}
+/* Set by app.js's positionHelpTip when there isn't enough room above
+   the icon (e.g. a card sitting right under the sticky header) --
+   flips the tooltip to open downward instead of clipping against the
+   top of the viewport. */
+.help .help-tip.tip-below {
+  bottom: auto;
+  top: 145%;
 }
 .help:hover .help-tip, .help:focus .help-tip, .help:focus-within .help-tip { display: block; }
 .help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
