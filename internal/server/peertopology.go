@@ -5,18 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"hamvoipconfiggui-asl3/internal/allstarapi"
-	"hamvoipconfiggui-asl3/internal/rptstatus"
-	"hamvoipconfiggui-asl3/internal/system"
 )
 
 // peerTopologyFetchTimeout bounds one stats.allstarlink.org request --
-// generous since it's a one-shot lookup triggered by an operator opening
-// the modal, not a poll, but still bounded so one slow/hanging peer
-// can't stall the whole response.
+// generous since it's a one-shot lookup triggered by an operator
+// clicking a row's own button, not a poll.
 const peerTopologyFetchTimeout = 8 * time.Second
 
 type peerTopologyPeer struct {
@@ -35,74 +31,35 @@ type peerTopologyResult struct {
 	ConnectedTo []peerTopologyPeer `json:"connectedTo,omitempty"`
 }
 
-// handleNodePeerTopology answers the "Connected right now" card's own
-// "Who else are they connected to?" button: for each peer currently
-// linked to node, asks stats.allstarlink.org what THAT peer is in turn
-// linked to -- a second-hop view this app has no other way to get,
-// since those are other operators' nodes, not ones running on this
-// machine's own Asterisk. See internal/allstarapi's package doc for why
-// a peer commonly comes back with no data at all (status reporting is
-// opt-in on the peer's own end, not something this app controls).
-//
-// Peers are looked up concurrently -- an operator's connected set is
-// usually small, but each lookup is its own outbound HTTPS round trip,
-// and there's no reason to make them wait on each other.
-func (s *Server) handleNodePeerTopology(w http.ResponseWriter, r *http.Request) {
-	num := r.PathValue("node")
-	if _, err := s.cfg.LoadNode(num); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+// handlePeerStatus answers one row's own "Who's connected to them?"
+// button on the "Connected right now" card: looks up peer (an
+// arbitrary AllStarLink node number -- not necessarily one hosted on
+// this machine) against stats.allstarlink.org and returns what it's
+// currently linked to. This is the only way this app has to see a
+// REMOTE node's own connections, since nothing about that node runs on
+// this machine's own Asterisk.
+func (s *Server) handlePeerStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), peerTopologyFetchTimeout)
 	defer cancel()
-
-	activityOut, err := system.AsteriskRX(ctx, s.asteriskBin, "rpt lstats "+num)
-	if err != nil {
-		http.Error(w, "could not read connected peers: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	var peerNumbers []string
-	if _, rows, ok := rptstatus.ParseLstats(activityOut); ok {
-		for _, row := range rows {
-			if len(row) > 0 && row[0] != "" {
-				peerNumbers = append(peerNumbers, row[0])
-			}
-		}
-	}
-
-	results := make([]peerTopologyResult, len(peerNumbers))
-	var wg sync.WaitGroup
-	for i, peerNum := range peerNumbers {
-		wg.Add(1)
-		go func(i int, peerNum string) {
-			defer wg.Done()
-			results[i] = s.fetchPeerTopology(ctx, peerNum)
-		}(i, peerNum)
-	}
-	wg.Wait()
-
+	res := s.fetchPeerTopology(ctx, r.PathValue("peer"))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"node":  num,
-		"peers": results,
-	})
+	json.NewEncoder(w).Encode(res)
 }
 
-// fetchPeerTopology resolves one connected peer's own linked nodes.
-// Directory (s.nodes) callsigns fill in wherever AllStarLink's own
-// registration data doesn't have one -- confirmed common for both the
-// peer itself and its own peers (see allstarapi's package doc).
+// fetchPeerTopology resolves one node's own linked nodes. Directory
+// (s.nodes) callsigns fill in wherever AllStarLink's own registration
+// data doesn't have one -- confirmed common for both the queried node
+// itself and its own peers (see allstarapi's package doc). Status
+// reporting is opt-in on the queried node's own end, so a node that
+// doesn't publish it (common) comes back as res.OK == false with a
+// message rather than an error.
 func (s *Server) fetchPeerTopology(ctx context.Context, peerNum string) peerTopologyResult {
 	res := peerTopologyResult{Number: peerNum}
 	if entry, ok := s.nodes.Lookup(peerNum); ok {
 		res.Callsign = entry.Label()
 	}
 
-	fctx, cancel := context.WithTimeout(ctx, peerTopologyFetchTimeout)
-	defer cancel()
-	status, err := allstarapi.FetchNodeStatus(fctx, s.aslStatsBaseURL, peerNum)
+	status, err := allstarapi.FetchNodeStatus(ctx, s.aslStatsBaseURL, peerNum)
 	if err != nil {
 		res.OK = false
 		if errors.Is(err, allstarapi.ErrNotFound) {

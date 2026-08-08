@@ -29,6 +29,7 @@
           <tr>
             {{range .ConnectedHeaders}}<th>{{.}}</th>{{end}}
             <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -36,6 +37,7 @@
           <tr{{if .Keyed}} class="keyed-row"{{end}}>
             {{range .Fields}}<td>{{.}}</td>{{end}}
             <td>{{if .Keyed}}<span class="talking-badge">talking</span>{{end}}</td>
+            <td><button type="button" class="btn btn-sm" data-peer-topology-btn title="Ask AllStarLink's own public status service (stats.allstarlink.org) what this station is currently connected to. Only works if that node publishes its status there — plenty of real nodes don't.">Who's connected to them?</button></td>
           </tr>
           {{end}}
         </tbody>
@@ -44,10 +46,6 @@
     {{else}}
       <div class="hint">Nothing connected.</div>
     {{end}}
-    </div>
-    <div class="actions" style="margin-top:0.75rem">
-      <button type="button" class="btn" data-peer-topology-btn data-node="{{.Number}}">Who else are they connected to?</button>
-      {{template "help" "Asks AllStarLink's own public status service (stats.allstarlink.org) what each currently connected station is, in turn, connected to. This is a separate node's own status, so it only works for a peer that publishes it there — plenty of real nodes don't."}}
     </div>
   </div>
 </div>

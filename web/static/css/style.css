@@ -317,6 +317,13 @@ button.danger:hover, .btn.danger:hover {
   border-color: var(--danger);
 }
 
+/* Compact variant for buttons packed into a table cell (e.g. each
+   "Connected right now" row's own peer-topology button). */
+button.btn-sm, .btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 .actions { display: flex; gap: 0.65rem; margin-top: 1.25rem; flex-wrap: wrap; }
 
 table { width: 100%; border-collapse: collapse; }

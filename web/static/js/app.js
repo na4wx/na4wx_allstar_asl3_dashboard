@@ -470,6 +470,7 @@ const AppSocket = (function () {
     const statusTh = document.createElement("th");
     statusTh.textContent = "Status";
     headRow.appendChild(statusTh);
+    headRow.appendChild(document.createElement("th"));
     thead.appendChild(headRow);
     table.appendChild(thead);
 
@@ -490,6 +491,17 @@ const AppSocket = (function () {
         statusTd.appendChild(badge);
       }
       tr.appendChild(statusTd);
+
+      const peerTd = document.createElement("td");
+      const peerBtn = document.createElement("button");
+      peerBtn.type = "button";
+      peerBtn.className = "btn btn-sm";
+      peerBtn.setAttribute("data-peer-topology-btn", "");
+      peerBtn.title = "Ask AllStarLink's own public status service (stats.allstarlink.org) what this station is currently connected to. Only works if that node publishes its status there — plenty of real nodes don't.";
+      peerBtn.textContent = "Who's connected to them?";
+      peerTd.appendChild(peerBtn);
+      tr.appendChild(peerTd);
+
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -641,6 +653,11 @@ document.addEventListener("click", (e) => {
 // which always puts app_rpt's own NODE column first), and the target
 // field's id is already scoped per-node ("quick_target_<this node>").
 document.addEventListener("click", (e) => {
+  // Excludes the row's own "Who's connected to them?" button (see
+  // below) -- that button lives inside the row now, and without this
+  // check every click on it would also refill the quick-connect field
+  // as an unwanted side effect.
+  if (e.target.closest("[data-peer-topology-btn]")) return;
   const row = e.target.closest("[data-live-connected] tbody tr");
   if (!row) return;
   const card = row.closest("[data-live-node]");
@@ -831,13 +848,14 @@ function convertFlashToToast() {
   showToast(kind, message);
 }
 
-// "Who else are they connected to?" button on Home's "Connected right
-// now" card: fetches internal/allstarapi's peer-topology endpoint (see
-// internal/server/peertopology.go) and shows the result in a modal.
-// AllStarLink's own public status service is the only way this app has
-// to see a REMOTE node's own connections, since nothing about that node
-// runs on this machine's own Asterisk. Built lazily into document.body,
-// same pattern as confirmModal above, so it survives every content swap
+// Each row's own "Who's connected to them?" button on Home's
+// "Connected right now" table: fetches internal/allstarapi's
+// peer-status endpoint (see internal/server/peertopology.go) for that
+// one row's node and shows the result in a modal. AllStarLink's own
+// public status service is the only way this app has to see a REMOTE
+// node's own connections, since nothing about that node runs on this
+// machine's own Asterisk. Built lazily into document.body, same
+// pattern as confirmModal above, so it survives every content swap
 // untouched.
 const peerTopologyModal = (function () {
   let backdrop, titleEl, bodyEl;
@@ -936,21 +954,14 @@ const peerTopologyModal = (function () {
     bodyEl.appendChild(loading);
     backdrop.hidden = false;
 
-    fetch("/nodes/" + encodeURIComponent(node) + "/peer-topology")
+    fetch("/peer-status/" + encodeURIComponent(node))
       .then((r) => {
         if (!r.ok) throw new Error("request failed");
         return r.json();
       })
       .then((data) => {
         bodyEl.replaceChildren();
-        if (!data.peers || !data.peers.length) {
-          const hint = document.createElement("div");
-          hint.className = "hint";
-          hint.textContent = "Nothing connected right now.";
-          bodyEl.appendChild(hint);
-          return;
-        }
-        data.peers.forEach((peer) => bodyEl.appendChild(renderPeerGroup(peer)));
+        bodyEl.appendChild(renderPeerGroup(data));
       })
       .catch(() => {
         bodyEl.replaceChildren();
@@ -964,11 +975,19 @@ const peerTopologyModal = (function () {
   return { show };
 })();
 
+// Row's own button, not the row-click-to-fill handler above: reads the
+// node number the same way that one does (the row's own first cell --
+// see rptstatus.BuildLstatsRows, which always puts app_rpt's own NODE
+// column first), so this needs no data-node attribute of its own and
+// works identically on both the server-rendered table and AppSocket's
+// live-updated one.
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-peer-topology-btn]");
   if (!btn) return;
-  const node = btn.getAttribute("data-node");
-  if (node) peerTopologyModal.show(node);
+  const row = btn.closest("tr");
+  const firstCell = row && row.querySelector("td");
+  if (!firstCell) return;
+  peerTopologyModal.show(firstCell.textContent.trim());
 });
 
 // Runs every stateful, content-scoped init above once on first load and
