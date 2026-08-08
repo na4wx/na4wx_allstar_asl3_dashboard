@@ -286,9 +286,18 @@
       </div>
 
       <div data-type-toggle-section="id_mode:cw" {{if ne .StationIDMode "cw"}}style="display:none"{{end}}>
-        <div class="field" style="margin-bottom:0">
-          <label for="id_text">Text to send as CW</label>
-          <input type="text" id="id_text" name="id_text" value="{{.StationIDText}}" placeholder="e.g. your callsign">
+        <div class="row">
+          <div class="field">
+            <label for="id_text">Text to send as CW</label>
+            <input type="text" id="id_text" name="id_text" value="{{.StationIDText}}" placeholder="e.g. your callsign">
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <label for="id_frequency">CW tone frequency (Hz)</label>
+              {{template "help" "The audio pitch of the CW ID tone, in Hz. This is the [morse] section's own idfrequency, shared by every node pointing at the same section (usually all of them) — changing it here changes it for those too."}}
+            </div>
+            <input type="number" id="id_frequency" name="id_frequency" min="1" value="{{.StationIDFrequency}}" placeholder="1065">
+          </div>
         </div>
       </div>
 
@@ -313,6 +322,13 @@
           </div>
         </div>
       </div>
+    </div>
+    <div class="field" style="margin-top:1rem; margin-bottom:0">
+      <div class="label-row">
+        <label for="id_time">How often to ID (idtime, ms)</label>
+        {{template "help" "How often this node re-identifies (plays the Station ID above), in milliseconds. 600000 = 10 minutes, the FCC's own maximum interval. Applies whether the ID above is CW or a sound file."}}
+      </div>
+      <input type="number" id="id_time" name="id_time" min="0" value="{{.StationIDTime}}" placeholder="600000">
     </div>
     <div class="actions">
       <button type="submit" class="primary">Save station ID</button>

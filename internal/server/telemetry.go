@@ -202,6 +202,15 @@ func (s *Server) populateNodeTelemetry(data *nodeEditData) {
 		data.StationIDMode = "sound"
 	}
 	data.StationIDValue = view.IDRecording
+	data.StationIDTime = view.IDTime
+
+	morseSection := view.Morse
+	if morseSection == "" {
+		morseSection = "morse"
+	}
+	if freq, err := s.cfg.GetMorseIDFrequency(morseSection); err == nil {
+		data.StationIDFrequency = freq
+	}
 }
 
 // handleNodeCourtesyToneUpdate saves which courtesy tone (ct1-ct8) plays
@@ -302,10 +311,18 @@ func (s *Server) handleNodeTelemetryUpdate(w http.ResponseWriter, r *http.Reques
 // config.FormatCWID) or a sound file reference, decided by the id_mode
 // toggle submitted with the form (same explicit-toggle pattern as the
 // courtesy-tone/telemetry editor above, not inferred from the old
-// value).
+// value) -- plus two related settings on the same card: "idtime" (how
+// often this node re-identifies, node-level, applies to either mode)
+// and, for CW mode only, the CW tone's own "idfrequency" in the node's
+// [morse] section (see config.SetMorseIDFrequency's own doc comment for
+// why that's a section-level write, same sharing model as telemetry).
+// Both are optional -- left blank, the template's own inherited value
+// keeps applying, same convention as the Radio tab's squelch tail
+// fields.
 func (s *Server) handleNodeStationIDUpdate(w http.ResponseWriter, r *http.Request) {
 	num := r.PathValue("node")
-	if _, err := s.cfg.LoadNode(num); err != nil {
+	view, err := s.cfg.LoadNode(num)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -315,6 +332,7 @@ func (s *Server) handleNodeStationIDUpdate(w http.ResponseWriter, r *http.Reques
 	}
 
 	var value string
+	isCW := r.FormValue("id_mode") == "cw"
 	switch r.FormValue("id_mode") {
 	case "cw":
 		text := strings.TrimSpace(r.FormValue("id_text"))
@@ -334,9 +352,35 @@ func (s *Server) handleNodeStationIDUpdate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := s.cfg.UpdateNodeSettings(num, map[string]string{"idrecording": value}); err != nil {
+	nodeUpdates := map[string]string{"idrecording": value}
+	if v := strings.TrimSpace(r.FormValue("id_time")); v != "" {
+		if ms, err := strconv.Atoi(v); err != nil || ms < 0 {
+			s.renderNodeEditErrorReq(w, r, num, "ID interval must be a non-negative number of milliseconds")
+			return
+		}
+		nodeUpdates["idtime"] = v
+	}
+	if err := s.cfg.UpdateNodeSettings(num, nodeUpdates); err != nil {
 		s.renderNodeEditErrorReq(w, r, num, err.Error())
 		return
 	}
+
+	if isCW {
+		if v := strings.TrimSpace(r.FormValue("id_frequency")); v != "" {
+			if hz, err := strconv.Atoi(v); err != nil || hz <= 0 {
+				s.renderNodeEditErrorReq(w, r, num, "CW ID tone frequency must be a positive number of Hz")
+				return
+			}
+			morseSection := view.Morse
+			if morseSection == "" {
+				morseSection = "morse"
+			}
+			if err := s.cfg.SetMorseIDFrequency(morseSection, v); err != nil {
+				s.renderNodeEditErrorReq(w, r, num, err.Error())
+				return
+			}
+		}
+	}
+
 	http.Redirect(w, r, "/nodes/"+num, http.StatusSeeOther)
 }

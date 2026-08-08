@@ -539,10 +539,15 @@ type nodeEditData struct {
 	// see populateNodeTelemetry. StationIDMode is "cw" or "sound";
 	// StationIDText is the CW text (only meaningful in "cw" mode);
 	// StationIDValue is the raw current value, for the sound picker to
-	// match against.
-	StationIDMode  string
-	StationIDText  string
-	StationIDValue string
+	// match against. StationIDTime is rpt.conf's own "idtime" (how
+	// often, in ms, this node re-identifies) and applies regardless of
+	// mode; StationIDFrequency is the CW ID's own audio tone (Hz, from
+	// the node's [morse] section) and is only meaningful in "cw" mode.
+	StationIDMode      string
+	StationIDText      string
+	StationIDValue     string
+	StationIDTime      string
+	StationIDFrequency string
 
 	// Scheduler tab: scheduled sound-playback entries -- see
 	// populateNodeSoundSchedule.

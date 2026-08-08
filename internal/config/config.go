@@ -108,6 +108,21 @@ type NodeView struct {
 	HangTime    string
 	AltHangTime string
 
+	// IDTime is rpt.conf's own "idtime" -- how often (milliseconds) this
+	// node re-identifies itself (plays idrecording), same override tier
+	// as RxChannel/Duplex. FCC Part 97.119 requires station ID at least
+	// every 10 minutes (600000ms); a real node's own node-main template
+	// already sets a non-blank value, so this is rarely actually empty
+	// in practice even though it's technically optional.
+	IDTime string
+
+	// Morse is the name of the rpt.conf section this node's CW/Morse
+	// station ID tone (speed/frequency/amplitude) resolves from --
+	// same sharing model as Telemetry below (usually the shared "morse"
+	// section every node points at by default via node-main's own
+	// "morse = morse", confirmed on a real node).
+	Morse string
+
 	// Interface is a human-readable label derived from RxChannel:
 	// "SimpleUSB", "USBRadio", "Hub (no radio)", or "" if RxChannel names
 	// a driver this package doesn't yet recognize (e.g. Voter, USRP).
@@ -228,9 +243,14 @@ func (s *Store) LoadNode(node string) (*NodeView, error) {
 	view.Duplex, _ = r.Value("duplex")
 	view.HangTime, _ = r.Value("hangtime")
 	view.AltHangTime, _ = r.Value("althangtime")
+	view.IDTime, _ = r.Value("idtime")
 	view.Telemetry, _ = r.Value("telemetry")
 	if view.Telemetry == "" {
 		view.Telemetry = "telemetry"
+	}
+	view.Morse, _ = r.Value("morse")
+	if view.Morse == "" {
+		view.Morse = "morse"
 	}
 	view.UnlinkedCT, _ = r.Value("unlinkedct")
 	view.RemoteCT, _ = r.Value("remotect")
