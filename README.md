@@ -12,9 +12,15 @@ cd na4wx_allstar_asl3_dashboard
 sudo ./install.sh
 ```
 
-This one script installs Go and the other tools this project needs (Piper/espeak-ng for text-to-speech, sox for audio conversion), optionally installs ASL3 itself if it isn't already present, builds the binary, and installs it as a systemd service (`asl3-gui.service`) listening on port `8089`. It's also how you update later — re-run it any time to pull the latest code and redeploy.
+This one script installs everything needed and gets you running:
 
-When it finishes, it prints the URL to open (e.g. `http://<node-ip>:8089/setup`). The first visit walks you through creating the admin account; every page after that requires login.
+- **Installed automatically, no prompt:** the Go toolchain (if missing/too old), [Piper](https://github.com/rhasspy/piper) plus three starter voices, [espeak-ng](https://github.com/espeak-ng/espeak-ng) (Piper's fallback), and [sox](https://sourceforge.net/projects/sox/) — everything the Sounds & Tones tab's "Create from text" and file-upload features need.
+- **Offered with a yes/no prompt, since they're bigger changes:** [AllStarLink 3](https://allstarlink.github.io/) itself, if this machine doesn't already have it (adds AllStarLink's apt repo, installs Asterisk + app_rpt + the DAHDI kernel module); and [SkywarnPlus](https://github.com/Mason10198/SkywarnPlus), a third-party weather-alert add-on — skip either one and re-run the script later to install it.
+- Finally, it builds `asl3-gui` and installs it as a systemd service (`asl3-gui.service`) listening on port `8089`.
+
+`install.sh` is also how you update later — re-run it any time to pull the latest code and redeploy; it skips anything already installed.
+
+When it finishes, it prints the URL to open (e.g. `http://<node-ip>:8089/setup`). The first visit walks you through creating the admin account; every page after that requires login. If you installed SkywarnPlus, finish its setup on the node's own SkywarnPlus tab (pick county codes, register the node).
 
 If you'd rather build a binary elsewhere and copy it over, see [Cross-compiling and deploying manually](#cross-compiling-and-deploying-manually) below.
 
@@ -76,6 +82,16 @@ The binary is stateless aside from a handful of small local files, all under one
 - **Config I/O** (`internal/config`, `internal/asteriskconf`) understands ASL3's template-inheritance config format and funnels every write through a small set of wrapper functions (`internal/config/write_hooks.go`) so things like the "Asterisk needs a restart" banner only need to hook one place, not every call site.
 - **Cloud Sync** (`internal/cloudagent`) is a separate, optional outbound WebSocket client — the node dials out to the cloud service, never the other way around, so nothing needs to be exposed to the internet for it to work.
 - This is a clean-room rewrite for ASL3, not a fork of the HamVoIP app: different OS (Debian vs. Arch), a native systemd Asterisk service instead of `safe_asterisk`, NetworkManager instead of wpa_supplicant+hostapd+dnsmasq, and a structurally different Asterisk config format (template inheritance, HTTP-based node registration instead of IAX2 peers).
+
+## Credits
+
+This dashboard just configures and displays what these projects already do — full credit to their own authors and maintainers:
+
+- **[AllStarLink 3](https://www.allstarlink.org/) / [app_rpt](https://github.com/AllStarLink/asl3-app_rpt)** — the Asterisk-based radio-linking platform this entire app is a control panel for. `install.sh` can install it for you; see [AllStarLink's own install docs](https://allstarlink.github.io/install/debian/install/).
+- **[na4wx_allstar_dashboard](https://github.com/na4wx/na4wx_allstar_dashboard)** — the original dashboard this project is a from-scratch ASL3 port of.
+- **[SkywarnPlus](https://github.com/Mason10198/SkywarnPlus)** by Mason10198 — the third-party National Weather Service alert automation the SkywarnPlus tab configures. Optional, installed only if you say yes at the `install.sh` prompt; this app doesn't modify or redistribute it.
+- **[Piper](https://github.com/rhasspy/piper)** by the Rhasspy project — the offline text-to-speech engine behind "Create from text" on the Sounds & Tones tab, with **[espeak-ng](https://github.com/espeak-ng/espeak-ng)** as its fallback when Piper isn't available. Voice models come from the [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) collection.
+- **[SoX](https://sourceforge.net/projects/sox/)** — does the audio format conversion behind every sound upload and generated prompt.
 
 ## License
 
