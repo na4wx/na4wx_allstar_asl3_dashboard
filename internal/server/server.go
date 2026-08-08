@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -683,6 +684,18 @@ func (s *Server) handleNodeRadioTuningUpdate(w http.ResponseWriter, r *http.Requ
 	}
 	isUSBRadio := view.Radio.Driver == "usbradio"
 
+	rptUpdates := map[string]string{}
+	for _, key := range []string{"hangtime", "althangtime"} {
+		if v := strings.TrimSpace(r.FormValue(key)); v != "" {
+			ms, err := strconv.Atoi(v)
+			if err != nil || ms < 0 {
+				s.renderNodeEditErrorReq(w, r, num, "Squelch tail must be a non-negative number of milliseconds")
+				return
+			}
+			rptUpdates[key] = v
+		}
+	}
+
 	updates := map[string]string{}
 	for _, key := range []string{"rxmixerset", "txmixaset", "txmixbset"} {
 		if v := strings.TrimSpace(r.FormValue(key)); v != "" {
@@ -721,6 +734,13 @@ func (s *Server) handleNodeRadioTuningUpdate(w http.ResponseWriter, r *http.Requ
 		if err := s.cfg.UpdateRadioSettings(num, updates); err != nil {
 			log.Printf("update radio settings %s: %v", num, err)
 			s.renderNodeEditErrorReq(w, r, num, "Could not save radio tuning: "+err.Error())
+			return
+		}
+	}
+	if len(rptUpdates) > 0 {
+		if err := s.cfg.UpdateNodeSettings(num, rptUpdates); err != nil {
+			log.Printf("update squelch tail %s: %v", num, err)
+			s.renderNodeEditErrorReq(w, r, num, "Could not save squelch tail: "+err.Error())
 			return
 		}
 	}

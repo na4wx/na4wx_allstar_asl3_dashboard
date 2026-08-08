@@ -99,6 +99,15 @@ type NodeView struct {
 	RxChannel string
 	Duplex    string // 0-4: repeater/telemetry duplex, see rpt.conf's own comments
 
+	// HangTime/AltHangTime are rpt.conf's own "squelch tail" durations
+	// (milliseconds app_rpt keeps transmitting after the repeater's own
+	// squelch closes) -- same override tier as RxChannel/Duplex. Empty
+	// means app_rpt's own built-in default (5000ms) applies; AltHangTime
+	// is used instead of HangTime in some linked-node scenarios (see
+	// rpt.conf's own comments) and is commonly left blank.
+	HangTime    string
+	AltHangTime string
+
 	// Interface is a human-readable label derived from RxChannel:
 	// "SimpleUSB", "USBRadio", "Hub (no radio)", or "" if RxChannel names
 	// a driver this package doesn't yet recognize (e.g. Voter, USRP).
@@ -217,6 +226,8 @@ func (s *Store) LoadNode(node string) (*NodeView, error) {
 	view := &NodeView{Node: node}
 	view.RxChannel, _ = r.Value("rxchannel")
 	view.Duplex, _ = r.Value("duplex")
+	view.HangTime, _ = r.Value("hangtime")
+	view.AltHangTime, _ = r.Value("althangtime")
 	view.Telemetry, _ = r.Value("telemetry")
 	if view.Telemetry == "" {
 		view.Telemetry = "telemetry"

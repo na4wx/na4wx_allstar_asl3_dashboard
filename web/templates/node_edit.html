@@ -215,6 +215,26 @@
     </div>
     {{end}}
   </div>
+  <div class="card">
+    <h2>Squelch tail (rpt.conf)</h2>
+    <p class="section-intro">How long the repeater keeps transmitting (courtesy tone, then carrier) after the incoming signal drops, before it actually unkeys. This is a separate, node-level setting from the radio module's own hardware squelch above.</p>
+    <div class="row">
+      <div class="field">
+        <div class="label-row">
+          <label for="hangtime">Squelch tail (hangtime, ms)</label>
+          {{template "help" "How long the repeater keeps transmitting after the signal drops, in milliseconds. app_rpt's own default is 5000 (5 seconds) if left blank. Shorter feels snappier; longer avoids choppy back-and-forth conversations."}}
+        </div>
+        <input type="number" id="hangtime" name="hangtime" min="0" value="{{.View.HangTime}}" placeholder="5000">
+      </div>
+      <div class="field">
+        <div class="label-row">
+          <label for="althangtime">Alternate squelch tail (althangtime, ms)</label>
+          {{template "help" "A second squelch tail duration app_rpt uses in some linked-node scenarios. Most setups can leave this blank."}}
+        </div>
+        <input type="number" id="althangtime" name="althangtime" min="0" value="{{.View.AltHangTime}}">
+      </div>
+    </div>
+  </div>
   <div class="actions">
     <button type="submit" class="primary">Save tuning</button>
   </div>
