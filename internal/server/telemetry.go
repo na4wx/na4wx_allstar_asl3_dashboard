@@ -202,7 +202,9 @@ func (s *Server) populateNodeTelemetry(data *nodeEditData) {
 		data.StationIDMode = "sound"
 	}
 	data.StationIDValue = view.IDRecording
-	data.StationIDTime = view.IDTime
+	if ms, err := strconv.Atoi(view.IDTime); err == nil {
+		data.StationIDIntervalSeconds = strconv.Itoa(ms / 1000)
+	}
 
 	morseSection := view.Morse
 	if morseSection == "" {
@@ -353,12 +355,16 @@ func (s *Server) handleNodeStationIDUpdate(w http.ResponseWriter, r *http.Reques
 	}
 
 	nodeUpdates := map[string]string{"idrecording": value}
-	if v := strings.TrimSpace(r.FormValue("id_time")); v != "" {
-		if ms, err := strconv.Atoi(v); err != nil || ms < 0 {
-			s.renderNodeEditErrorReq(w, r, num, "ID interval must be a non-negative number of milliseconds")
+	if v := strings.TrimSpace(r.FormValue("id_time_seconds")); v != "" {
+		seconds, err := strconv.Atoi(v)
+		if err != nil || seconds < 0 {
+			s.renderNodeEditErrorReq(w, r, num, "ID interval must be a non-negative number of seconds")
 			return
 		}
-		nodeUpdates["idtime"] = v
+		// app_rpt's own "idtime" is milliseconds -- converted here, at
+		// the server boundary, so the UI only ever deals in seconds
+		// (see nodeEditData.StationIDIntervalSeconds's own doc comment).
+		nodeUpdates["idtime"] = strconv.Itoa(seconds * 1000)
 	}
 	if err := s.cfg.UpdateNodeSettings(num, nodeUpdates); err != nil {
 		s.renderNodeEditErrorReq(w, r, num, err.Error())

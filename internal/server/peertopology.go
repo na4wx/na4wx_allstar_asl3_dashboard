@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -65,7 +66,15 @@ func (s *Server) fetchPeerTopology(ctx context.Context, peerNum string) peerTopo
 		if errors.Is(err, allstarapi.ErrNotFound) {
 			res.Error = "This node has never reported live status to AllStarLink (status reporting is off, or it's not an AllStarLink node)."
 		} else {
-			res.Error = "Couldn't reach AllStarLink's status service."
+			// Logged with the real underlying error (DNS failure, TLS
+			// error, timeout, non-200 response, ...) -- the user-facing
+			// message can't be more specific than "couldn't reach it"
+			// without leaking network internals, but this node's own
+			// outbound HTTPS access (or lack of it) is the single most
+			// likely cause and worth being able to actually confirm
+			// from the journal instead of guessing.
+			log.Printf("peer status %s: %v", peerNum, err)
+			res.Error = "Couldn't reach AllStarLink's status service. This usually means the node running this dashboard has no outbound internet access to stats.allstarlink.org (check its network/firewall) -- see this app's own log for the exact error."
 		}
 		return res
 	}

@@ -539,15 +539,20 @@ type nodeEditData struct {
 	// see populateNodeTelemetry. StationIDMode is "cw" or "sound";
 	// StationIDText is the CW text (only meaningful in "cw" mode);
 	// StationIDValue is the raw current value, for the sound picker to
-	// match against. StationIDTime is rpt.conf's own "idtime" (how
-	// often, in ms, this node re-identifies) and applies regardless of
-	// mode; StationIDFrequency is the CW ID's own audio tone (Hz, from
-	// the node's [morse] section) and is only meaningful in "cw" mode.
-	StationIDMode      string
-	StationIDText      string
-	StationIDValue     string
-	StationIDTime      string
-	StationIDFrequency string
+	// match against. StationIDIntervalSeconds is rpt.conf's own "idtime"
+	// (how often this node re-identifies) converted to whole seconds
+	// for display -- app_rpt itself stores it in milliseconds, but
+	// nobody thinks about ID intervals in anything but seconds/minutes,
+	// so the ms<->seconds conversion happens at the server boundary
+	// (see populateNodeTelemetry/handleNodeStationIDUpdate) rather than
+	// showing raw milliseconds in the UI. Applies regardless of mode.
+	// StationIDFrequency is the CW ID's own audio tone (Hz, from the
+	// node's [morse] section) and is only meaningful in "cw" mode.
+	StationIDMode            string
+	StationIDText            string
+	StationIDValue           string
+	StationIDIntervalSeconds string
+	StationIDFrequency       string
 
 	// Scheduler tab: scheduled sound-playback entries -- see
 	// populateNodeSoundSchedule.
