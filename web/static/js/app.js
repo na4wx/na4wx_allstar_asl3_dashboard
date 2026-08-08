@@ -696,6 +696,22 @@ document.addEventListener("click", (e) => {
   digitsField.focus();
 });
 
+// Show/Hide button next to a password field (see .password-field in
+// style.css) -- data-toggle-password names the input's own id, rather
+// than relying on DOM position, so the button and field don't have to
+// be direct siblings. Delegated, so it works on every such field,
+// including ones swapped in later by AppSocket, with no re-binding.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-toggle-password]");
+  if (!btn) return;
+  const input = document.getElementById(btn.getAttribute("data-toggle-password"));
+  if (!input) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  btn.textContent = show ? "Hide" : "Show";
+  btn.setAttribute("aria-pressed", show ? "true" : "false");
+});
+
 // Home's "Connected right now" table: clicking a row fills that same
 // node's own "Other node's number" field with the clicked peer, so
 // linking/unlinking someone already on screen is a click instead of

@@ -255,6 +255,25 @@ input[type=text], input[type=password], input[type=number], select, textarea {
 }
 input::placeholder, textarea::placeholder { color: var(--text-dim); opacity: 0.75; }
 
+/* A password input paired with a Show/Hide button (see app.js's
+   data-toggle-password handler) -- the global input[type=password]
+   rule above sets width:100%, which fights a flex item's own sizing,
+   so this overrides it back to the normal flex-child shrink/grow
+   behavior. */
+.password-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.password-field input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+.password-field button {
+  flex: none;
+}
+
 /* Soft focus ring rather than a hard outline — same accessibility
    signal, less alarm-bell. */
 input:focus, select:focus, textarea:focus {

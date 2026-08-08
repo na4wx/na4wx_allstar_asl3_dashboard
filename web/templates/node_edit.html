@@ -253,7 +253,10 @@
     <p class="hint">Registers this node with a remote server so other nodes can find it. Enter your AllStarLink registration password to register (or update); leave the password blank to remove this node's registration entirely.</p>
     <div class="field">
       <label for="reg_password">Password</label>
-      <input type="text" id="reg_password" name="reg_password" value="{{.Registration.Password}}">
+      <div class="password-field">
+        <input type="password" id="reg_password" name="reg_password" value="{{.Registration.Password}}" autocomplete="off">
+        <button type="button" class="btn" data-toggle-password="reg_password" aria-pressed="false">Show</button>
+      </div>
     </div>
     <div class="field">
       <label for="reg_server">Server</label>
