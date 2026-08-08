@@ -831,6 +831,146 @@ function convertFlashToToast() {
   showToast(kind, message);
 }
 
+// "Who else are they connected to?" button on Home's "Connected right
+// now" card: fetches internal/allstarapi's peer-topology endpoint (see
+// internal/server/peertopology.go) and shows the result in a modal.
+// AllStarLink's own public status service is the only way this app has
+// to see a REMOTE node's own connections, since nothing about that node
+// runs on this machine's own Asterisk. Built lazily into document.body,
+// same pattern as confirmModal above, so it survives every content swap
+// untouched.
+const peerTopologyModal = (function () {
+  let backdrop, titleEl, bodyEl;
+
+  function build() {
+    backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.hidden = true;
+
+    const card = document.createElement("div");
+    card.className = "modal-card modal-card--wide";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+
+    const header = document.createElement("div");
+    header.className = "modal-card-header";
+    titleEl = document.createElement("h2");
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "modal-close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", hide);
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+    card.appendChild(header);
+
+    bodyEl = document.createElement("div");
+    bodyEl.className = "modal-card-body";
+    card.appendChild(bodyEl);
+
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) hide();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (!backdrop.hidden && e.key === "Escape") hide();
+    });
+  }
+
+  function hide() {
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  // Built with createElement/textContent throughout -- callsign/
+  // location text ultimately comes from stats.allstarlink.org, an
+  // external, unauthenticated source, so none of it is ever treated as
+  // markup.
+  function renderPeerGroup(peer) {
+    const group = document.createElement("div");
+    group.className = "peer-topology-group";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = peer.number + (peer.callsign ? " — " + peer.callsign : "");
+    group.appendChild(h3);
+
+    if (!peer.ok) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = peer.error || "Couldn't look up this node.";
+      group.appendChild(hint);
+      return group;
+    }
+
+    if (!peer.connectedTo || !peer.connectedTo.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "Not connected to anything else right now.";
+      group.appendChild(hint);
+      return group;
+    }
+
+    const ul = document.createElement("ul");
+    ul.className = "peer-topology-list";
+    peer.connectedTo.forEach((p) => {
+      const li = document.createElement("li");
+      let text = p.number;
+      if (p.callsign) text += " — " + p.callsign;
+      if (p.location) text += " (" + p.location + ")";
+      li.textContent = text;
+      ul.appendChild(li);
+    });
+    group.appendChild(ul);
+    return group;
+  }
+
+  function show(node) {
+    if (!backdrop) build();
+    titleEl.textContent = "Who else is node " + node + " connected to?";
+    bodyEl.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "hint";
+    loading.textContent = "Checking AllStarLink…";
+    bodyEl.appendChild(loading);
+    backdrop.hidden = false;
+
+    fetch("/nodes/" + encodeURIComponent(node) + "/peer-topology")
+      .then((r) => {
+        if (!r.ok) throw new Error("request failed");
+        return r.json();
+      })
+      .then((data) => {
+        bodyEl.replaceChildren();
+        if (!data.peers || !data.peers.length) {
+          const hint = document.createElement("div");
+          hint.className = "hint";
+          hint.textContent = "Nothing connected right now.";
+          bodyEl.appendChild(hint);
+          return;
+        }
+        data.peers.forEach((peer) => bodyEl.appendChild(renderPeerGroup(peer)));
+      })
+      .catch(() => {
+        bodyEl.replaceChildren();
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "Couldn't reach this node's status right now. Try again in a moment.";
+        bodyEl.appendChild(hint);
+      });
+  }
+
+  return { show };
+})();
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-peer-topology-btn]");
+  if (!btn) return;
+  const node = btn.getAttribute("data-node");
+  if (node) peerTopologyModal.show(node);
+});
+
 // Runs every stateful, content-scoped init above once on first load and
 // again after every AppSocket content swap (a saved form, a link
 // navigation -- anything that replaces <main>). Each function re-scans

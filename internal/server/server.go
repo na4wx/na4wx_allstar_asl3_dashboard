@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"hamvoipconfiggui-asl3/internal/allstarapi"
 	"hamvoipconfiggui-asl3/internal/auth"
 	"hamvoipconfiggui-asl3/internal/automation"
 	"hamvoipconfiggui-asl3/internal/cloudagent"
@@ -102,6 +103,17 @@ type Server struct {
 	history *linkHistory
 	live    *liveHub
 
+	// aslStatsBaseURL is stats.allstarlink.org's own node-status API
+	// (see internal/allstarapi), used by the "Connected right now"
+	// card's peer-topology modal to look up a connected peer's own
+	// links -- a real node this app doesn't otherwise have any way to
+	// ask, since it isn't hosted here. Always allstarapi.DefaultBaseURL
+	// in production; overridden only by tests, which is why this isn't
+	// a New() parameter or CLI flag like every other external
+	// address in this package -- there's nothing for an operator to
+	// point it at instead.
+	aslStatsBaseURL string
+
 	// restartNeeded is set whenever cfg writes any Asterisk config file
 	// (see config.Store's own OnChange field, wired below in New) and
 	// drives layout.html's own red "Asterisk must be restarted" bar,
@@ -166,6 +178,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 			sa818Port, sa818StatePath, cloudAuditLogPath,
 		),
 		cloudURLDefault: cloudURLDefault,
+		aslStatsBaseURL: allstarapi.DefaultBaseURL,
 	}
 	cfg.OnChange = func() { s.restartNeeded.Store(true) }
 	s.live = newLiveHub(s)
@@ -233,6 +246,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /config/{file}", s.requireAuth(s.handleConfigFile))
 	s.mux.HandleFunc("POST /config/{file}", s.requireAuth(s.handleConfigSave))
 	s.mux.HandleFunc("POST /nodes/{node}/link", s.requireAuth(s.handleNodeLink))
+	s.mux.HandleFunc("GET /nodes/{node}/peer-topology", s.requireAuth(s.handleNodePeerTopology))
 	s.mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
 
 	s.mux.HandleFunc("GET /nodes", s.requireAuth(s.handleNodesIndex))

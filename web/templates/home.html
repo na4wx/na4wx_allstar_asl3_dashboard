@@ -45,6 +45,10 @@
       <div class="hint">Nothing connected.</div>
     {{end}}
     </div>
+    <div class="actions" style="margin-top:0.75rem">
+      <button type="button" class="btn" data-peer-topology-btn data-node="{{.Number}}">Who else are they connected to?</button>
+      {{template "help" "Asks AllStarLink's own public status service (stats.allstarlink.org) what each currently connected station is, in turn, connected to. This is a separate node's own status, so it only works for a peer that publishes it there — plenty of real nodes don't."}}
+    </div>
   </div>
 </div>
 
