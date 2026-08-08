@@ -1,4 +1,4 @@
-# ASL3 Config GUI
+# NA4WX Allstar ASL3 Dashboard
 
 A browser-based configuration dashboard for [AllStarLink 3](https://allstarlink.github.io/) (ASL3) nodes — a from-scratch port of [na4wx_allstar_dashboard](https://github.com/na4wx/na4wx_allstar_dashboard), which targets the older HamVoIP distribution instead. Single static Go binary, no database, no Node/npm build step — it reads and writes ASL3's own Asterisk config files directly and talks to `asterisk -rx` for live status.
 
