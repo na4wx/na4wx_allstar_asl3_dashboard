@@ -325,10 +325,10 @@
     </div>
     <div class="field" style="margin-top:1rem; margin-bottom:0">
       <div class="label-row">
-        <label for="id_time_seconds">How often to ID (seconds)</label>
-        {{template "help" "How often this node re-identifies (plays the Station ID above). 600 seconds = 10 minutes, the FCC's own maximum interval. Applies whether the ID above is CW or a sound file. Stored in rpt.conf as idtime, in milliseconds -- this app converts for you."}}
+        <label for="id_time_minutes">How often to ID (minutes)</label>
+        {{template "help" "How often this node re-identifies (plays the Station ID above). 10 minutes is the FCC's own maximum interval. Applies whether the ID above is CW or a sound file. Stored in rpt.conf as idtime, in milliseconds -- this app converts for you."}}
       </div>
-      <input type="number" id="id_time_seconds" name="id_time_seconds" min="0" value="{{.StationIDIntervalSeconds}}" placeholder="600">
+      <input type="number" id="id_time_minutes" name="id_time_minutes" min="0" value="{{.StationIDIntervalMinutes}}" placeholder="10">
     </div>
     <div class="actions">
       <button type="submit" class="primary">Save station ID</button>
