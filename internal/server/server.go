@@ -149,9 +149,11 @@ func (s *Server) StartCloudAgent(ctx context.Context) {
 // which goes through systemctl instead, since Asterisk is a confirmed
 // native systemd unit on ASL3). sa818Port/sa818StatePath configure the
 // SA818/DRA818 radio-module programmer card. wifiHotspotSSID/
-// wifiHotspotPassword/wifiDashboardPort/wifiHotspotEnabled configure the
-// wlan0 fallback hotspot -- see internal/wifi's package doc.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, wxTonesPath, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+// wifiDashboardPort/wifiHotspotEnabled configure the wlan0 fallback
+// hotspot -- see internal/wifi's package doc. The hotspot itself is
+// always broadcast open (no password option) -- see
+// wifi.NewManager's own doc comment for why.
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, wxTonesPath, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
 	cfg := &config.Store{Dir: asteriskDir}
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
@@ -172,7 +174,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		wxTones:        wxTonesStore,
 		nodes:          nodedb.New(nodeDBPath, nodeDBURL),
 		history:        newLinkHistory(),
-		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
+		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiDashboardPort, wifiHotspotEnabled),
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
 			soundsStore, soundScheduleStore, wxTonesStore, skywarnDir,

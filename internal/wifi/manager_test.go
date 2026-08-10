@@ -29,7 +29,7 @@ func (f *fakeBackend) Connect(context.Context, string, string) error {
 	return f.connectErr
 }
 func (f *fakeBackend) Status(context.Context) (Status, error) { return Status{}, nil }
-func (f *fakeBackend) StartHotspot(context.Context, string, string) error {
+func (f *fakeBackend) StartHotspot(context.Context, string) error {
 	f.startHotspotCalls++
 	return f.startErr
 }
@@ -44,7 +44,7 @@ func (f *fakeBackend) StopHotspot(context.Context) error {
 // port 80 on whatever machine runs the test suite.
 func newTestManager(hasRoute bool) (*Manager, *fakeBackend) {
 	fb := &fakeBackend{}
-	m := NewManager("test-ssid", "test-password", "8088", true)
+	m := NewManager("test-ssid", "8088", true)
 	m.SetBackend(fb)
 	m.hasRoute = func(context.Context, string) (bool, error) { return hasRoute, nil }
 	m.startCaptivePortal = func(string) *captivePortal { return nil }

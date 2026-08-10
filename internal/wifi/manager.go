@@ -45,7 +45,6 @@ type Manager struct {
 	mu                 sync.Mutex
 	backend            Backend
 	hotspotSSID        string
-	hotspotPSK         string
 	dashboardURL       string
 	enabled            bool
 	hotspotActive      bool
@@ -81,12 +80,16 @@ type Manager struct {
 // server (see captive_portal.go) points phones/laptops at once they
 // join the hotspot -- always http://hotspotStaticIP:<dashboardPort>/,
 // since that's the one address guaranteed reachable from a device that
-// just joined the hotspot and nothing else.
-func NewManager(hotspotSSID, hotspotPSK, dashboardPort string, enabled bool) *Manager {
+// just joined the hotspot and nothing else. The hotspot itself is
+// always broadcast open (no password) -- relying on the captive-portal
+// redirect (see captive_portal.go/dns.go) to guide a phone/laptop
+// straight to this page rather than requiring anyone to know or look
+// up a password first, and so there's nothing to configure wrong on a
+// node an operator can only reach *because* they're locked out of it.
+func NewManager(hotspotSSID, dashboardPort string, enabled bool) *Manager {
 	return &Manager{
 		backend:            unavailableBackend{},
 		hotspotSSID:        hotspotSSID,
-		hotspotPSK:         hotspotPSK,
 		dashboardURL:       "http://" + hotspotStaticIP + ":" + dashboardPort + "/",
 		enabled:            enabled,
 		hasRoute:           defaultRouteExists,
@@ -188,7 +191,7 @@ func (m *Manager) checkAndAct(ctx context.Context) {
 	hotspotActive := m.hotspotActive
 	lastConnectAttempt := m.lastConnectAttempt
 	lastHotspotAttempt := m.lastHotspotAttempt
-	ssid, psk := m.hotspotSSID, m.hotspotPSK
+	ssid := m.hotspotSSID
 	dashboardURL := m.dashboardURL
 	startCP := m.startCaptivePortal
 	m.mu.Unlock()
@@ -221,7 +224,7 @@ func (m *Manager) checkAndAct(ctx context.Context) {
 		m.lastHotspotAttempt = time.Now()
 		m.mu.Unlock()
 		log.Printf("wifi: no network connection detected — starting fallback hotspot %q via %s", ssid, backend.Name())
-		if err := backend.StartHotspot(ctx, ssid, psk); err != nil {
+		if err := backend.StartHotspot(ctx, ssid); err != nil {
 			log.Printf("wifi: failed to start fallback hotspot: %v", err)
 		} else {
 			log.Printf("wifi: fallback hotspot %q is up", ssid)

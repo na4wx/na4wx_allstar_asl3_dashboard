@@ -74,11 +74,11 @@ type Backend interface {
 	// network.
 	Connect(ctx context.Context, ssid, psk string) error
 	Status(ctx context.Context) (Status, error)
-	// StartHotspot begins broadcasting ssid/psk as this node's own
-	// access point on wlan0, taking over from whatever client-mode
-	// association was active. psk == "" broadcasts it open (no
-	// password) — same convention as Connect.
-	StartHotspot(ctx context.Context, ssid, psk string) error
+	// StartHotspot begins broadcasting ssid as this node's own, always-
+	// open access point on wlan0, taking over from whatever client-mode
+	// association was active. Always open (no password) -- see
+	// Manager.NewManager's own doc comment for why.
+	StartHotspot(ctx context.Context, ssid string) error
 	// StopHotspot ends the hotspot and hands wlan0 back to normal
 	// client-mode operation.
 	StopHotspot(ctx context.Context) error
@@ -110,7 +110,7 @@ func (unavailableBackend) Connect(context.Context, string, string) error {
 func (unavailableBackend) Status(context.Context) (Status, error) {
 	return Status{Mode: ModeUnavailable}, ErrUnavailable
 }
-func (unavailableBackend) StartHotspot(context.Context, string, string) error {
+func (unavailableBackend) StartHotspot(context.Context, string) error {
 	return ErrUnavailable
 }
 func (unavailableBackend) StopHotspot(context.Context) error {

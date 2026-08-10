@@ -43,17 +43,11 @@ func main() {
 	cloudURL := flag.String("cloud-url", "wss://api-allstar.na4wx.com/agent", "the one WebSocket URL this node will ever dial for the optional public cloud platform connection; fixed at build/deploy time, shown read-only on the Cloud Sync settings card and never operator-editable there -- override only for local development/testing against a different cloud instance")
 	cloudAuditLog := flag.String("cloud-audit-log", "/var/log/asl3-gui/cloud-actions.log", "path to record every action the cloud connection relays to this device, independent of the cloud site's own records")
 	wifiHotspotSSID := flag.String("wifi-hotspot-ssid", "ASL3 Dashboard", "SSID this node broadcasts as a fallback WiFi hotspot on wlan0 the moment it has no active network connection")
-	wifiHotspotPassword := flag.String("wifi-hotspot-password", "", "password for the fallback WiFi hotspot above (WPA2, 8-63 characters); empty broadcasts it open")
 	wifiHotspotEnabled := flag.Bool("wifi-hotspot-enabled", true, "automatically stand up the fallback WiFi hotspot on wlan0 when this node has no active network connection")
 	flag.Parse()
 
 	if err := wifi.ValidateSSID(*wifiHotspotSSID); err != nil {
 		log.Fatalf("-wifi-hotspot-ssid: %v", err)
-	}
-	if *wifiHotspotPassword != "" {
-		if err := wifi.ValidatePSK(*wifiHotspotPassword); err != nil {
-			log.Fatalf("-wifi-hotspot-password: %v", err)
-		}
 	}
 	_, wifiDashboardPort, err := net.SplitHostPort(*addr)
 	if err != nil {
@@ -80,7 +74,7 @@ func main() {
 		log.Printf("no admin account configured yet; visit http://<this-host>%s/setup to create one", *addr)
 	}
 
-	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *wxTonesPath, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, *wifiHotspotPassword, wifiDashboardPort, *wifiHotspotEnabled)
+	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *wxTonesPath, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, wifiDashboardPort, *wifiHotspotEnabled)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

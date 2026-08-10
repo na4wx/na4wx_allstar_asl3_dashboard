@@ -205,22 +205,17 @@ func (b *nmcliBackend) Connect(ctx context.Context, ssid, psk string) error {
 	return nil
 }
 
-// StartHotspot broadcasts ssid on wlan0 as this node's own access
-// point. psk == "" broadcasts it open (no WPA2 protection) -- omitting
-// nmcli's own "password" argument entirely is confirmed to produce a
-// genuinely open network (wifi-sec.key-mgmt=none), not an
-// auto-generated password.
-func (b *nmcliBackend) StartHotspot(ctx context.Context, ssid, psk string) error {
+// StartHotspot broadcasts ssid on wlan0 as this node's own, always-open
+// access point. Deliberately never takes a password -- omitting nmcli's
+// own "password" argument entirely is confirmed to produce a genuinely
+// open network (wifi-sec.key-mgmt=none), not an auto-generated
+// password; see Manager.NewManager's own doc comment for why this
+// package doesn't offer one at all.
+func (b *nmcliBackend) StartHotspot(ctx context.Context, ssid string) error {
 	if err := ValidateSSID(ssid); err != nil {
 		return err
 	}
 	args := []string{"device", "wifi", "hotspot", "ifname", wlan0Iface, "con-name", nmcliHotspotConnName, "ssid", ssid}
-	if psk != "" {
-		if err := ValidatePSK(psk); err != nil {
-			return err
-		}
-		args = append(args, "password", psk)
-	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var stderr bytes.Buffer
