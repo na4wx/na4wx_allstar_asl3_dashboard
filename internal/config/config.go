@@ -56,14 +56,14 @@ func (s *Store) dir() string {
 // one of these drivers.
 type RadioView struct {
 	// Driver is "simpleusb" or "usbradio".
-	Driver string
+	Driver string `json:"driver"`
 
 	// DriverDuplex is usbradio.conf's own "duplex" (0=half, 1=full) --
 	// only meaningful for the usbradio driver; SimpleUSB has no equivalent
 	// setting. This is NOT the same value as NodeView.Duplex (rpt.conf's
 	// 0-4 repeater/telemetry duplex) despite the shared key name -- see
 	// asteriskconf's TestUsbradioConfDuplexIsDistinctFromRptConfDuplex.
-	DriverDuplex string
+	DriverDuplex string `json:"driverDuplex"`
 
 	// CarrierFrom/CtcssFrom control where carrier/CTCSS detection comes
 	// from -- confirmed the hard way, on real hardware, that a mismatch
@@ -74,30 +74,43 @@ type RadioView struct {
 	// no/usb/usbinvert/pp/ppinvert (see simpleusb.conf's own comments);
 	// usbradio additionally supports dsp (CarrierFrom and CtcssFrom) and
 	// vox (CarrierFrom only) (see usbradio.conf's own comments).
-	CarrierFrom string
-	CtcssFrom   string
+	CarrierFrom string `json:"carrierFrom"`
+	CtcssFrom   string `json:"ctcssFrom"`
 
-	RxMixerSet string
-	TxMixASet  string
-	TxMixBSet  string
+	RxMixerSet string `json:"rxMixerSet"`
+	TxMixASet  string `json:"txMixASet"`
+	TxMixBSet  string `json:"txMixBSet"`
 
 	// usbradio-only tune fields; empty for simpleusb.
-	RxVoiceAdj   string
-	TxCtcssAdj   string
-	RxSquelchAdj string
+	RxVoiceAdj   string `json:"rxVoiceAdj"`
+	TxCtcssAdj   string `json:"txCtcssAdj"`
+	RxSquelchAdj string `json:"rxSquelchAdj"`
 }
 
 // NodeView is the resolved, read-only configuration of one locally-hosted
 // AllStar node, merged across rpt.conf, and usbradio.conf/simpleusb.conf
 // when the node has a radio interface.
+// json tags below match client/src/api/nodes.ts's own Node interface in
+// the NA4WX Allstar Cloud companion app field-for-field wherever a field
+// exists on both sides -- that file's own comment already claimed this
+// struct's JSON tags produce that shape; they just didn't exist yet
+// (confirmed the hard way: every field came across as PascalCase,
+// leaving the cloud's node/sounds/radios pages entirely blank with no
+// error, since the client's camelCase field reads silently returned
+// undefined). Three of that interface's fields -- dialString, txChannel,
+// toTime -- don't correspond to anything ASL3's own NodeView tracks (they
+// look like leftovers from the original HamVoIP-based cloud design) and
+// necessarily stay unset over the wire; Interface/Radio below aren't in
+// that TS interface yet at all, tagged now anyway so the shape is ready
+// whenever the client's Node type is extended to cover radio tuning.
 type NodeView struct {
-	Node string
+	Node string `json:"number"`
 
 	// RxChannel and Duplex are rpt.conf's own values for this node,
 	// resolved through its [node-main](!) template per ASL3's confirmed
 	// override rule (a node's own stanza always wins).
-	RxChannel string
-	Duplex    string // 0-4: repeater/telemetry duplex, see rpt.conf's own comments
+	RxChannel string `json:"rxChannel"`
+	Duplex    string `json:"duplex"` // 0-4: repeater/telemetry duplex, see rpt.conf's own comments
 
 	// HangTime/AltHangTime are rpt.conf's own "squelch tail" durations
 	// (milliseconds app_rpt keeps transmitting after the repeater's own
@@ -105,8 +118,8 @@ type NodeView struct {
 	// means app_rpt's own built-in default (5000ms) applies; AltHangTime
 	// is used instead of HangTime in some linked-node scenarios (see
 	// rpt.conf's own comments) and is commonly left blank.
-	HangTime    string
-	AltHangTime string
+	HangTime    string `json:"hangTime"`
+	AltHangTime string `json:"altHangTime"`
 
 	// IDTime is rpt.conf's own "idtime" -- how often (milliseconds) this
 	// node re-identifies itself (plays idrecording), same override tier
@@ -114,29 +127,29 @@ type NodeView struct {
 	// every 10 minutes (600000ms); a real node's own node-main template
 	// already sets a non-blank value, so this is rarely actually empty
 	// in practice even though it's technically optional.
-	IDTime string
+	IDTime string `json:"idTime"`
 
 	// Morse is the name of the rpt.conf section this node's CW/Morse
 	// station ID tone (speed/frequency/amplitude) resolves from --
 	// same sharing model as Telemetry below (usually the shared "morse"
 	// section every node points at by default via node-main's own
 	// "morse = morse", confirmed on a real node).
-	Morse string
+	Morse string `json:"morse"`
 
 	// Interface is a human-readable label derived from RxChannel:
 	// "SimpleUSB", "USBRadio", "Hub (no radio)", or "" if RxChannel names
 	// a driver this package doesn't yet recognize (e.g. Voter, USRP).
-	Interface string
+	Interface string `json:"interface"`
 
 	// Radio is non-nil only when Interface is "SimpleUSB" or "USBRadio".
-	Radio *RadioView
+	Radio *RadioView `json:"radio"`
 
 	// Telemetry is the name of the rpt.conf section this node's courtesy
 	// tones/status audio resolve from (usually the shared "telemetry"
 	// section every node points at by default via node-main's own
 	// "telemetry = telemetry", confirmed on a real node -- a node can
 	// override this to a different section for its own independent set).
-	Telemetry string
+	Telemetry string `json:"telemetry"`
 
 	// UnlinkedCT/RemoteCT/LinkUnkeyCT are node-main-level fields (same
 	// override tier as RxChannel/Duplex above, NOT part of the Telemetry
@@ -144,9 +157,9 @@ type NodeView struct {
 	// situation -- confirmed on a real node's own node-main template.
 	// Empty means "use app_rpt's own built-in default for that
 	// situation."
-	UnlinkedCT  string
-	RemoteCT    string
-	LinkUnkeyCT string
+	UnlinkedCT  string `json:"unlinkedCT"`
+	RemoteCT    string `json:"remoteCT"`
+	LinkUnkeyCT string `json:"linkUnkeyCT"`
 
 	// IDRecording is rpt.conf's own "idrecording" -- a node-main-level
 	// field, same tier as RxChannel/Duplex -- confirmed on a real node's
@@ -157,7 +170,7 @@ type NodeView struct {
 	// internal/config/telemetry.go's IsCWIDValue/ParseCWIDText, which
 	// apply the exact same "|i" convention this field's own inline
 	// comment documents.
-	IDRecording string
+	IDRecording string `json:"idRecording"`
 
 	// Functions/Macro/Scheduler are the rpt.conf section names this
 	// node's DTMF function map, saved macros, and native connect/
@@ -167,9 +180,9 @@ type NodeView struct {
 	// "scheduler = schedule" directly; there's no explicit "macro ="
 	// field at all, so app_rpt's own default of a bare "macro" section
 	// applies whenever this is empty).
-	Functions string
-	Macro     string
-	Scheduler string
+	Functions string `json:"functions"`
+	Macro     string `json:"macro"`
+	Scheduler string `json:"scheduler"`
 }
 
 // ListNodes returns the node numbers of every locally-configured node in
