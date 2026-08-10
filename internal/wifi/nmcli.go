@@ -15,19 +15,13 @@ import (
 // "we are the ones broadcasting this" apart from any access-point
 // connection the operator saved themselves.
 //
-// Captive-portal note: Manager's own port-80 redirect (see
-// captive_portal.go -- an iptables rule scoped to wlan0, since
-// HamVoIP's own stock httpd already permanently owns :80 itself) works
-// over this backend the same as the wpa_supplicant one -- but the
-// wildcard DNS hijack that makes each
-// OS's captive-portal probe hostname (captive.apple.com,
-// connectivitycheck.android.com, ...) actually resolve to this node
-// isn't wired up here, since nmcli's own "device wifi hotspot" shared-
-// connection dnsmasq isn't configurable for that through the plain
-// nmcli command line the way wpa_hotspot.go's own hand-written dnsmasq
-// config is. A device joining an NM-backed hotspot may see a less
-// reliable (or absent) automatic sign-in popup as a result; browsing
-// straight to the dashboard's address still works either way.
+// Captive-portal note: Manager's own port-80 redirect and wildcard DNS
+// responder (see captive_portal.go/dns.go -- iptables rules scoped to
+// wlan0, funneling the hotspot interface's own port-80/port-53 traffic
+// to this app rather than needing it to bind those ports directly) run
+// independently of whatever this backend does for DHCP/NAT
+// (NetworkManager's own shared-connection dnsmasq handles that side),
+// so both work the same regardless of which backend is active.
 const nmcliHotspotConnName = "hamvoip-gui-hotspot"
 
 type nmcliBackend struct{}
@@ -206,23 +200,44 @@ func (b *nmcliBackend) Connect(ctx context.Context, ssid, psk string) error {
 }
 
 // StartHotspot broadcasts ssid on wlan0 as this node's own, always-open
-// access point. Deliberately never takes a password -- omitting nmcli's
-// own "password" argument entirely is confirmed to produce a genuinely
-// open network (wifi-sec.key-mgmt=none), not an auto-generated
-// password; see Manager.NewManager's own doc comment for why this
-// package doesn't offer one at all.
+// access point. Built by hand (add the connection profile, then modify
+// it, then bring it up) rather than nmcli's own "device wifi hotspot"
+// convenience command -- confirmed on a real node that the convenience
+// command generates a random WPA2 password whenever one isn't
+// explicitly given, on a current NetworkManager version, contradicting
+// its own documented "no password means open" behavior. Explicitly
+// setting wifi-sec.key-mgmt to "none" (removing the security setting
+// outright, not just omitting a password) is what actually guarantees
+// an open network regardless of NetworkManager version defaults -- see
+// Manager.NewManager's own doc comment for why this package never
+// offers a hotspot password at all.
 func (b *nmcliBackend) StartHotspot(ctx context.Context, ssid string) error {
 	if err := ValidateSSID(ssid); err != nil {
 		return err
 	}
-	args := []string{"device", "wifi", "hotspot", "ifname", wlan0Iface, "con-name", nmcliHotspotConnName, "ssid", ssid}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	var stderr bytes.Buffer
-	c := exec.CommandContext(ctx, "nmcli", args...)
-	c.Stderr = &stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("nmcli device wifi hotspot %q: %w: %s", ssid, err, stderr.String())
+
+	// Deletes any leftover profile from a previous run first (best-effort
+	// -- errors when there's nothing to delete, the expected case on a
+	// clean start), so a crash/restart while the hotspot was already up
+	// never collides with a stale profile of the same name.
+	_, _ = runNmcli(ctx, 10*time.Second, "connection", "delete", nmcliHotspotConnName)
+
+	steps := [][]string{
+		{"connection", "add", "type", "wifi", "ifname", wlan0Iface, "con-name", nmcliHotspotConnName, "autoconnect", "no", "ssid", ssid},
+		{"connection", "modify", nmcliHotspotConnName, "802-11-wireless.mode", "ap", "ipv4.method", "shared", "wifi-sec.key-mgmt", "none"},
+		{"connection", "up", nmcliHotspotConnName},
+	}
+	for _, args := range steps {
+		stepCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		var stderr bytes.Buffer
+		c := exec.CommandContext(stepCtx, "nmcli", args...)
+		c.Stderr = &stderr
+		err := c.Run()
+		cancel()
+		if err != nil {
+			_, _ = runNmcli(context.Background(), 10*time.Second, "connection", "delete", nmcliHotspotConnName)
+			return fmt.Errorf("nmcli %s: %w: %s", strings.Join(args, " "), err, stderr.String())
+		}
 	}
 	return nil
 }
