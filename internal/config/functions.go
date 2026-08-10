@@ -16,8 +16,8 @@ import (
 // Functions/Macro), so callers pass that section name explicitly rather
 // than assuming a fixed section.
 type FunctionMacro struct {
-	Digits  string
-	Command string
+	Digits  string `json:"digits"`
+	Command string `json:"command"`
 }
 
 // ListFunctionMacros returns a functions/macro stanza's resolved

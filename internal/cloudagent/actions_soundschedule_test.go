@@ -37,8 +37,9 @@ func newSoundScheduleTestAgent(t *testing.T) (*Agent, string) {
 		"asterisk",
 		soundsStore,
 		soundschedule.New(filepath.Join(t.TempDir(), "sound-schedule.json")),
-		"", // skywarnDir
-		"", // sa818Port
+		nil, // wxTones
+		"",  // skywarnDir
+		"",  // sa818Port
 		filepath.Join(t.TempDir(), "sa818-last.json"),
 		"", // auditLogPath
 	)

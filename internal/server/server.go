@@ -155,6 +155,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 	cfg := &config.Store{Dir: asteriskDir}
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
+	wxTonesStore := wxtone.New(wxTonesPath)
 
 	s := &Server{
 		auth:           authMgr,
@@ -168,13 +169,13 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		ttsVoicesDir:   ttsVoicesDir,
 		soundSchedule:  soundScheduleStore,
 		skywarnDir:     skywarnDir,
-		wxTones:        wxtone.New(wxTonesPath),
+		wxTones:        wxTonesStore,
 		nodes:          nodedb.New(nodeDBPath, nodeDBURL),
 		history:        newLinkHistory(),
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiHotspotPassword, wifiDashboardPort, wifiHotspotEnabled),
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
-			soundsStore, soundScheduleStore, skywarnDir,
+			soundsStore, soundScheduleStore, wxTonesStore, skywarnDir,
 			sa818Port, sa818StatePath, cloudAuditLogPath,
 		),
 		cloudURLDefault: cloudURLDefault,

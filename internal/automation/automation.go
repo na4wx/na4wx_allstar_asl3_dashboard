@@ -18,6 +18,7 @@
 package automation
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -187,10 +188,10 @@ func ParseMacro(dtmf string, functionsEntries []config.FunctionMacro) (label str
 // Row is one entry in a "Scheduled connections" table — joining a
 // schedule entry with its macro's DTMF value by macro number.
 type Row struct {
-	MacroNum   string
-	Label      string // friendly description, or the raw DTMF if unrecognized
-	Recognized bool
-	TimeSpec   string
+	MacroNum   string `json:"macroNum"`
+	Label      string `json:"label"` // friendly description, or the raw DTMF if unrecognized
+	Recognized bool   `json:"recognized"`
+	TimeSpec   string `json:"timeSpec"`
 }
 
 // TimeFieldRe matches app_rpt's own schedule-field syntax: a single
@@ -199,3 +200,137 @@ type Row struct {
 // means a malformed submission fails loudly instead of silently never
 // scheduling.
 var TimeFieldRe = regexp.MustCompile(`^\*$|^[0-9]+$`)
+
+// BuildRows resolves view's own "Scheduled connections" rows -- the
+// shared list-building step both internal/server's own Scheduler tab
+// and the cloud agent's schedule.list action use, joining each schedule
+// entry to its macro's DTMF value by macro number and resolving that
+// through ParseMacro against the node's real functions-table entries.
+// Best-effort like the rest of this package's read paths: a functions-
+// table read failure just means every row falls back to unrecognized
+// rather than failing the whole list.
+func BuildRows(store *config.Store, view *config.NodeView) ([]Row, error) {
+	scheduleEntries, err := store.ListScheduleEntries(view.Scheduler)
+	if err != nil {
+		return nil, err
+	}
+	macroEntries, err := store.ListFunctionMacros(view.Macro)
+	if err != nil {
+		return nil, err
+	}
+	macroByNum := make(map[string]string, len(macroEntries))
+	for _, m := range macroEntries {
+		macroByNum[m.Digits] = m.Command
+	}
+	functionsEntries, err := store.ListFunctionMacros(view.Functions)
+	if err != nil {
+		functionsEntries = nil
+	}
+
+	rows := make([]Row, 0, len(scheduleEntries))
+	for _, se := range scheduleEntries {
+		row := Row{MacroNum: se.MacroNum, TimeSpec: se.TimeSpec}
+		if dtmf, ok := macroByNum[se.MacroNum]; ok {
+			if label, recognized := ParseMacro(dtmf, functionsEntries); recognized {
+				row.Label = label
+				row.Recognized = true
+			} else {
+				row.Label = dtmf
+			}
+		} else {
+			row.Label = "(macro " + se.MacroNum + " not found)"
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// SaveConnectionParams is one connect/disconnect automation rule
+// submission -- see SaveConnection's own doc comment. Weekdays is
+// treated as ["*"] when empty (every day), matching the local
+// Scheduler tab's own "no weekday checkboxes selected" default.
+type SaveConnectionParams struct {
+	ActionKey                       string
+	Target                          string
+	Minute, Hour, DayOfMonth, Month string
+	Weekdays                        []string
+}
+
+// SaveConnection adds one connect/disconnect automation rule to view's
+// own node -- the shared implementation behind internal/server's
+// Scheduler tab and the cloud agent's schedule.saveConnection action.
+// Weekday checkboxes are a create-time convenience: app_rpt's schedule
+// format allows only one day-of-week value (or "*") per entry, so
+// selecting several fans out into that many independent schedule+macro
+// pairs, each then listed/edited/deleted as its own row -- there is no
+// native way to group them, so this doesn't pretend to.
+func SaveConnection(store *config.Store, view *config.NodeView, p SaveConnectionParams) error {
+	action, ok := ActionByKey(p.ActionKey)
+	if !ok {
+		return fmt.Errorf("pick a valid connect/disconnect action")
+	}
+	if action.NeedsTarget && p.Target == "" {
+		return fmt.Errorf("enter the node number for this action")
+	}
+	for _, v := range []string{p.Minute, p.Hour, p.DayOfMonth, p.Month} {
+		if !TimeFieldRe.MatchString(v) {
+			return fmt.Errorf("minute/hour/day-of-month/month must each be a single number or * — app_rpt's scheduler doesn't support ranges or lists")
+		}
+	}
+	weekdays := p.Weekdays
+	for _, wd := range weekdays {
+		if !TimeFieldRe.MatchString(wd) {
+			return fmt.Errorf("invalid day-of-week value")
+		}
+	}
+	if len(weekdays) == 0 {
+		weekdays = []string{"*"}
+	}
+
+	digit, err := EnsureFunctionDigit(store, view.Functions, action.Command)
+	if err != nil {
+		return err
+	}
+	dtmf := BuildDTMF(digit, p.Target, action.NeedsTarget)
+
+	schedulerSection := view.Scheduler
+	if schedulerSection == "schedule" {
+		// Still on the shared default -- give this node its own section
+		// on first use, so its scheduled connections don't collide with
+		// (or get deleted alongside) any other node's.
+		schedulerSection = "schedule" + view.Node
+		if err := store.SetNodeScheduler(view.Node, schedulerSection); err != nil {
+			return err
+		}
+	}
+
+	for _, wd := range weekdays {
+		macroEntries, err := store.ListFunctionMacros(view.Macro)
+		if err != nil {
+			return err
+		}
+		macroNum := AllocateMacroNumber(macroEntries)
+		if err := store.SetFunctionMacro(view.Macro, macroNum, dtmf); err != nil {
+			return err
+		}
+		timeSpec := p.Minute + " " + p.Hour + " " + p.DayOfMonth + " " + p.Month + " " + wd
+		if err := store.SetScheduleEntry(schedulerSection, macroNum, timeSpec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteConnection removes one connect/disconnect automation rule's
+// schedule entry and its own dedicated macro entry, but leaves the
+// shared functions-table digit alone -- other rows may reuse it, and
+// it's indistinguishable from one the operator wired up by hand.
+func DeleteConnection(store *config.Store, view *config.NodeView, macroNum string) error {
+	if err := store.DeleteScheduleEntry(view.Scheduler, macroNum); err != nil {
+		return err
+	}
+	if err := store.DeleteFunctionMacro(view.Macro, macroNum); err != nil {
+		return err
+	}
+	return nil
+}

@@ -51,6 +51,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/sounds"
 	"hamvoipconfiggui-asl3/internal/soundschedule"
+	"hamvoipconfiggui-asl3/internal/wxtone"
 )
 
 // Backoff/timing constants for Run's reconnect loop and heartbeat.
@@ -95,6 +96,7 @@ type Agent struct {
 	live           *liveWatches
 	sounds         *sounds.Store
 	soundSchedule  *soundschedule.Store
+	wxTones        *wxtone.Store
 	skywarnDir     string
 	sa818Port      string
 	sa818StatePath string
@@ -137,6 +139,7 @@ func New(
 	asteriskBin string,
 	soundsStore *sounds.Store,
 	soundSchedule *soundschedule.Store,
+	wxTones *wxtone.Store,
 	skywarnDir string,
 	sa818Port string,
 	sa818StatePath string,
@@ -150,6 +153,7 @@ func New(
 		live:           newLiveWatches(),
 		sounds:         soundsStore,
 		soundSchedule:  soundSchedule,
+		wxTones:        wxTones,
 		skywarnDir:     skywarnDir,
 		sa818Port:      sa818Port,
 		sa818StatePath: sa818StatePath,

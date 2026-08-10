@@ -8,6 +8,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/sounds"
 	"hamvoipconfiggui-asl3/internal/soundschedule"
+	"hamvoipconfiggui-asl3/internal/wxtone"
 )
 
 // tempStoreFromFixtures copies the real node fixtures shared with
@@ -32,10 +33,10 @@ func tempStoreFromFixtures(t *testing.T) *config.Store {
 }
 
 // newTestAgent builds an Agent for tests that don't care about the
-// sounds/soundschedule/skywarnplus/sa818 dependencies -- each gets a
-// working, empty store backed by its own temp dir/file, since a nil
-// *Store would panic the moment a test path touched it. Tests that do
-// care about one of these build their own Agent directly via New()
+// sounds/soundschedule/wxtone/skywarnplus/sa818 dependencies -- each
+// gets a working, empty store backed by its own temp dir/file, since a
+// nil *Store would panic the moment a test path touched it. Tests that
+// do care about one of these build their own Agent directly via New()
 // instead.
 func newTestAgent(t *testing.T, settingsPath string, store *config.Store, asteriskBin string) *Agent {
 	t.Helper()
@@ -46,6 +47,7 @@ func newTestAgent(t *testing.T, settingsPath string, store *config.Store, asteri
 		asteriskBin,
 		sounds.New(t.TempDir(), t.TempDir(), "sox"),
 		soundschedule.New(filepath.Join(t.TempDir(), "sound-schedule.json")),
+		wxtone.New(filepath.Join(t.TempDir(), "wx-tones.json")),
 		"", // skywarnDir -- not installed in these tests
 		"", // sa818Port -- auto-detect, not exercised in these tests
 		filepath.Join(t.TempDir(), "sa818-last.json"),

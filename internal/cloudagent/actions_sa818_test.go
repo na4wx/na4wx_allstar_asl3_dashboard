@@ -11,7 +11,7 @@ import (
 func TestActionSA818LastWithNoStatePath(t *testing.T) {
 	a := New(
 		"", "wss://cloud.example.com/agent", tempStoreFromFixtures(t), "asterisk",
-		nil, nil, "", "",
+		nil, nil, nil, "", "",
 		"", // sa818StatePath -- unconfigured
 		"",
 	)

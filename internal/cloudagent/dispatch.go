@@ -23,8 +23,6 @@ type actionFunc func(ctx context.Context, params json.RawMessage) (any, error)
 // following action families exist there but have no ASL3 counterpart
 // here, deliberately omitted rather than faked against a config model
 // ASL3 doesn't have:
-//   - config.listFunctionMacros/saveFunctionMacro/deleteFunctionMacro --
-//     no DTMF function/macro editing built in ASL3's config package yet
 //   - config.cloneNodeConfig/applyStandardCommandSet/normalizeNodeConfig/
 //     recreateNodeDevice/syncExtensions -- HamVoIP's per-node private
 //     command-set sections and shared-named-radio-device model; ASL3
@@ -33,12 +31,15 @@ type actionFunc func(ctx context.Context, params json.RawMessage) (any, error)
 //   - config.listRadioDevices/loadRadioDevice/saveRadioDevice/
 //     deleteRadioDevice -- same reason; already covered by
 //     config.loadNode/config.updateRadioSettings here
-//   - schedule.* (DTMF-triggered connect/disconnect scheduling) --
-//     internal/automation is ported and wired into the local UI (see
-//     internal/server/automation.go), but not relayed here
-//   - wxTone.* (alert-driven courtesy-tone swap) -- internal/wxtone is
-//     ported and wired into the local UI (see internal/server/wxtone.go),
-//     but not relayed here
+//
+// config.listFunctionMacros/saveFunctionMacro/deleteFunctionMacro,
+// schedule.*, and wxTone.* were all previously omitted with the same
+// reasoning as above, but that turned out to be wrong -- ASL3 does have
+// all three (internal/config's own FunctionMacro support, internal/
+// automation, internal/wxtone), they just hadn't been wired into this
+// registry yet. Confirmed the hard way: the cloud dashboard's Commands/
+// Scheduler/WX-tone sections all came back "unknown action" until these
+// were added.
 func (a *Agent) actions() map[string]actionFunc {
 	return map[string]actionFunc{
 		"system.status":          a.actionSystemStatus,
@@ -56,6 +57,9 @@ func (a *Agent) actions() map[string]actionFunc {
 		"config.setCourtesyTones":    a.actionConfigSetCourtesyTones,
 		"config.listTelemetry":       a.actionConfigListTelemetry,
 		"config.setTelemetry":        a.actionConfigSetTelemetry,
+		"config.listFunctionMacros":  a.actionConfigListFunctionMacros,
+		"config.saveFunctionMacro":   a.actionConfigSaveFunctionMacro,
+		"config.deleteFunctionMacro": a.actionConfigDeleteFunctionMacro,
 
 		"registration.load":   a.actionRegistrationLoad,
 		"registration.save":   a.actionRegistrationSave,
@@ -64,6 +68,14 @@ func (a *Agent) actions() map[string]actionFunc {
 		"soundSchedule.list":   a.actionSoundScheduleList,
 		"soundSchedule.save":   a.actionSoundScheduleSave,
 		"soundSchedule.delete": a.actionSoundScheduleDelete,
+
+		"schedule.list":             a.actionScheduleList,
+		"schedule.saveConnection":   a.actionScheduleSaveConnection,
+		"schedule.deleteConnection": a.actionScheduleDeleteConnection,
+
+		"wxTone.list":   a.actionWXToneList,
+		"wxTone.save":   a.actionWXToneSave,
+		"wxTone.delete": a.actionWXToneDelete,
 
 		"sa818.last":    a.actionSA818Last,
 		"sa818.program": a.actionSA818Program,

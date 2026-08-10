@@ -39,7 +39,7 @@ func TestDispatchAuditsEveryCall(t *testing.T) {
 		"wss://cloud.example.com/agent",
 		tempStoreFromFixtures(t),
 		"asterisk",
-		nil, nil, "", "", "",
+		nil, nil, nil, "", "", "",
 		auditPath,
 	)
 	if _, err := a.dispatch(context.Background(), "config.listNodes", nil); err != nil {
