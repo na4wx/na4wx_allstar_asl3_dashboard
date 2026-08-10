@@ -206,16 +206,24 @@ func (b *nmcliBackend) Connect(ctx context.Context, ssid, psk string) error {
 // that the convenience command generates a random WPA2 password
 // whenever one isn't explicitly given, on a current NetworkManager
 // version, contradicting its own documented "no password means open"
-// behavior. Explicitly setting wifi-sec.key-mgmt to "none" (removing
-// the security setting outright, not just omitting a password) is what
-// actually guarantees an open network regardless of NetworkManager
-// version defaults -- see Manager.NewManager's own doc comment for why
-// this package never offers a hotspot password at all. ipv4.addresses
-// is pinned to hotspotStaticCIDR for the same reason: confirmed the
+// behavior.
+//
+// Deliberately never touches 802-11-wireless-security (the "wifi-sec"
+// setting group) at all -- a freshly added connection has no security
+// group until something sets one, which is already the open network
+// this package wants; see Manager.NewManager's own doc comment for why
+// it never offers a hotspot password. An earlier version of this
+// function set wifi-sec.key-mgmt to the literal string "none",
+// intending "no security" -- but in NetworkManager's own connection
+// schema, key-mgmt "none" doesn't mean that at all, it means *static
+// WEP*, which then requires a WEP key nothing here ever provided,
+// making every hotspot start fail outright ("password for
+// '802-11-wireless-security.wep-key0' not given", confirmed on a real
+// node). ipv4.addresses is pinned to hotspotStaticCIDR since the
 // "shared" method's own default gateway isn't reliably that address on
-// every NetworkManager version either, and captive_portal.go/dns.go
-// both hardcode hotspotStaticIP as where they expect clients to reach
-// this node.
+// every NetworkManager version, and captive_portal.go/dns.go both
+// hardcode hotspotStaticIP as where they expect clients to reach this
+// node.
 func (b *nmcliBackend) StartHotspot(ctx context.Context, ssid string) error {
 	if err := ValidateSSID(ssid); err != nil {
 		return err
@@ -229,7 +237,7 @@ func (b *nmcliBackend) StartHotspot(ctx context.Context, ssid string) error {
 
 	steps := [][]string{
 		{"connection", "add", "type", "wifi", "ifname", wlan0Iface, "con-name", nmcliHotspotConnName, "autoconnect", "no", "ssid", ssid},
-		{"connection", "modify", nmcliHotspotConnName, "802-11-wireless.mode", "ap", "ipv4.method", "shared", "ipv4.addresses", hotspotStaticCIDR, "wifi-sec.key-mgmt", "none"},
+		{"connection", "modify", nmcliHotspotConnName, "802-11-wireless.mode", "ap", "ipv4.method", "shared", "ipv4.addresses", hotspotStaticCIDR},
 		{"connection", "up", nmcliHotspotConnName},
 	}
 	for _, args := range steps {
