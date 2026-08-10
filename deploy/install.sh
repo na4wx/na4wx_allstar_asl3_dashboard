@@ -48,6 +48,20 @@ systemctl daemon-reload
 systemctl enable asl3-gui
 systemctl restart asl3-gui
 
+PORT=8089
+
+echo "Allowing port $PORT through the firewall (if one is active)"
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
+	ufw allow "$PORT/tcp" >/dev/null
+	echo "  ufw: allowed $PORT/tcp"
+elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+	firewall-cmd --permanent --add-port="$PORT/tcp" >/dev/null
+	firewall-cmd --reload >/dev/null
+	echo "  firewalld: allowed $PORT/tcp"
+else
+	echo "  no active firewall found (checked ufw, firewalld) -- nothing to do"
+fi
+
 iface_ip() {
 	ip -4 -o addr show dev "$1" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1
 }
@@ -58,12 +72,12 @@ WLAN0_IP=$(iface_ip wlan0)
 echo
 echo "Installed and started. Visit this URL to finish setup:"
 if [ -n "$ETH0_IP" ] && [ -n "$WLAN0_IP" ]; then
-	echo "  http://$ETH0_IP:8089/setup   (Ethernet)"
-	echo "  http://$WLAN0_IP:8089/setup   (WiFi)"
+	echo "  http://$ETH0_IP:$PORT/setup   (Ethernet)"
+	echo "  http://$WLAN0_IP:$PORT/setup   (WiFi)"
 elif [ -n "$ETH0_IP" ]; then
-	echo "  http://$ETH0_IP:8089/setup"
+	echo "  http://$ETH0_IP:$PORT/setup"
 elif [ -n "$WLAN0_IP" ]; then
-	echo "  http://$WLAN0_IP:8089/setup"
+	echo "  http://$WLAN0_IP:$PORT/setup"
 else
-	echo "  http://<this-node-ip>:8089/setup"
+	echo "  http://<this-node-ip>:$PORT/setup"
 fi
