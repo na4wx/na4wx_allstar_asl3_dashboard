@@ -58,6 +58,8 @@ func (a *Agent) actions() map[string]actionFunc {
 		"config.setCourtesyTones":    a.actionConfigSetCourtesyTones,
 		"config.listTelemetry":       a.actionConfigListTelemetry,
 		"config.setTelemetry":        a.actionConfigSetTelemetry,
+		"config.saveStationID":       a.actionConfigSaveStationID,
+		"config.getMorseIDFrequency": a.actionConfigGetMorseIDFrequency,
 		"config.listFunctionMacros":  a.actionConfigListFunctionMacros,
 		"config.saveFunctionMacro":   a.actionConfigSaveFunctionMacro,
 		"config.deleteFunctionMacro": a.actionConfigDeleteFunctionMacro,
