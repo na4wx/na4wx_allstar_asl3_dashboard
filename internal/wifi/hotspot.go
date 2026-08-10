@@ -10,11 +10,16 @@ import (
 )
 
 // hotspotStaticIP is the gateway address a client sees once joined to
-// this node's fallback hotspot. Not an arbitrary choice -- it's
-// NetworkManager's own hardcoded default gateway for a "shared"
-// connection (which is what nmcliBackend.StartHotspot creates), so this
-// constant just names what nmcli already does rather than configuring
-// anything itself.
+// this node's fallback hotspot -- explicitly pinned via the connection
+// profile's own ipv4.addresses (see nmcliBackend.StartHotspot), not
+// left to whatever NetworkManager might default a "shared" connection
+// to on its own. This used to just document NetworkManager's own
+// assumed default instead of setting it -- confirmed on a real node
+// that assumption doesn't hold on every NetworkManager version (same
+// class of issue as StartHotspot's own password default not holding
+// either): wlan0 came up with no usable address at all, breaking the
+// static dashboardURL/dns.go's own wildcard-DNS answer, both of which
+// hardcode this exact address.
 const (
 	hotspotStaticIP   = "10.42.0.1"
 	hotspotStaticCIDR = hotspotStaticIP + "/24"
