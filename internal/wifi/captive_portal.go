@@ -28,25 +28,28 @@ const captivePortalInternalPort = ":8090"
 // browsing has moved almost entirely to HTTPS).
 const captivePortalProbePort = "80"
 
-// captivePortal is a tiny HTTP server, reached via an iptables REDIRECT
-// rule that funnels the hotspot interface's own port-80 traffic to it,
-// redirecting every request to the real dashboard. Combined with the
-// wildcard DNS answer wpa_hotspot.go's dnsmasq config sets (every
-// hostname resolves to this node's own IP while hotspot mode is
-// active), this is what makes a phone/laptop that just joined the
-// hotspot automatically pop up a sign-in prompt pointed at the
-// dashboard, rather than requiring the operator to already know (or
-// look up) an address to browse to.
+// captivePortal is a tiny HTTP server plus wildcardDNSServer, reached
+// via iptables REDIRECT rules that funnel the hotspot interface's own
+// port-80 and port-53 traffic to them. The DNS side answers every
+// hostname with this node's own IP (see dns.go) -- since NetworkManager's
+// own shared-connection dnsmasq has no plain-nmcli way to configure that
+// kind of wildcard answer, this package runs its own responder instead
+// of relying on it. Combined, this is what makes a phone/laptop that
+// just joined the hotspot automatically pop up a sign-in prompt pointed
+// at the dashboard, rather than requiring the operator to already know
+// (or look up) an address to browse to.
 type captivePortal struct {
 	srv *http.Server
+	dns *wildcardDNSServer
 }
 
-// startCaptivePortal starts the redirect server in the background and
-// adds the iptables rule that routes the hotspot interface's port-80
-// traffic to it. Both are best-effort: a failure here doesn't fail
-// hotspot startup -- the AP itself and manually browsing straight to
-// the dashboard's real port both still work fine without it, just
-// without the automatic popup.
+// startCaptivePortal starts the redirect server and wildcard DNS
+// responder in the background and adds the iptables rules that route
+// the hotspot interface's port-80 and port-53 traffic to them. All of
+// this is best-effort: a failure here doesn't fail hotspot startup --
+// the AP itself and manually browsing straight to the dashboard's real
+// address both still work fine without it, just without the automatic
+// popup.
 func startCaptivePortal(dashboardURL string) *captivePortal {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -61,15 +64,21 @@ func startCaptivePortal(dashboardURL string) *captivePortal {
 	if err := addRedirectRule(); err != nil {
 		log.Printf("wifi: could not add captive-portal iptables redirect: %v", err)
 	}
-	return &captivePortal{srv: srv}
+
+	dns := startWildcardDNS()
+	if err := addDNSRedirectRules(); err != nil {
+		log.Printf("wifi: could not add captive-portal DNS iptables redirect: %v", err)
+	}
+
+	return &captivePortal{srv: srv, dns: dns}
 }
 
-// stop shuts the redirect server down and removes the iptables rule, on
-// its own fresh timeout budget regardless of the caller's own context
-// state (this is best-effort cleanup, not something that should inherit
-// an already-cancelled context and skip straight to a force-close).
-// Safe to call on a nil *captivePortal (e.g. if startCaptivePortal's
-// bind failed) or a nil receiver.
+// stop shuts the redirect server and DNS responder down and removes
+// both iptables rules, on its own fresh timeout budget regardless of
+// the caller's own context state (this is best-effort cleanup, not
+// something that should inherit an already-cancelled context and skip
+// straight to a force-close). Safe to call on a nil *captivePortal
+// (e.g. if startCaptivePortal's own bind failed) or a nil receiver.
 func (c *captivePortal) stop() {
 	if c == nil {
 		return
@@ -77,6 +86,10 @@ func (c *captivePortal) stop() {
 	if err := removeRedirectRule(); err != nil {
 		log.Printf("wifi: could not remove captive-portal iptables redirect: %v", err)
 	}
+	if err := removeDNSRedirectRules(); err != nil {
+		log.Printf("wifi: could not remove captive-portal DNS iptables redirect: %v", err)
+	}
+	c.dns.stop()
 	if c.srv == nil {
 		return
 	}
@@ -116,4 +129,46 @@ func addRedirectRule() error {
 
 func removeRedirectRule() error {
 	return runCmd(context.Background(), 5*time.Second, "iptables", redirectRuleArgs("-D")...)
+}
+
+// dnsRedirectRuleArgs is redirectRuleArgs' own counterpart for port 53
+// -- proto is "udp" or "tcp" (a DNS client may use either, so both need
+// their own rule; iptables doesn't have a single "either protocol"
+// match). Shared between add and remove for the same reason
+// redirectRuleArgs is.
+func dnsRedirectRuleArgs(action, proto string) []string {
+	return []string{
+		"-t", "nat", action, "PREROUTING",
+		"-i", wlan0Iface,
+		"-p", proto,
+		"--dport", "53",
+		"-j", "REDIRECT",
+		"--to-port", captiveDNSInternalPort[1:], // strip the leading ":" net.ListenUDP's addr needs
+	}
+}
+
+// addDNSRedirectRules adds both the udp and tcp variants, deleting any
+// matching rule left over from a previous run first -- same "safe to
+// call again after a crash/restart" reasoning as addRedirectRule.
+func addDNSRedirectRules() error {
+	ctx := context.Background()
+	var firstErr error
+	for _, proto := range []string{"udp", "tcp"} {
+		_ = runCmd(ctx, 5*time.Second, "iptables", dnsRedirectRuleArgs("-D", proto)...)
+		if err := runCmd(ctx, 5*time.Second, "iptables", dnsRedirectRuleArgs("-A", proto)...); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func removeDNSRedirectRules() error {
+	ctx := context.Background()
+	var firstErr error
+	for _, proto := range []string{"udp", "tcp"} {
+		if err := runCmd(ctx, 5*time.Second, "iptables", dnsRedirectRuleArgs("-D", proto)...); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }

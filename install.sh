@@ -346,6 +346,31 @@ else
 	apt_install sox || warn "couldn't install sox — sound file upload and \"Create from text\" saving will fail until it's installed"
 fi
 
+# --- WiFi hotspot fallback ---------------------------------------------------
+#
+# Backs internal/wifi's automatic hotspot fallback (see that package's
+# own doc comment) -- unlike the original HamVoIP app, ASL3 only ever
+# talks to NetworkManager (via nmcli's own built-in hotspot support, no
+# hostapd/dnsmasq needed), so the one thing actually required here is
+# iptables, for the captive-portal redirect's own rules (see
+# internal/wifi/captive_portal.go and dns.go): this app's dashboard
+# already owns its own port, so those rules funnel just the *hotspot
+# interface's* own port-80/port-53 traffic to it, rather than needing
+# it to bind those ports directly.
+
+log "Checking iptables (captive-portal redirect for the WiFi hotspot fallback)"
+if command -v iptables >/dev/null 2>&1; then
+	log "iptables already installed"
+else
+	apt_install iptables || warn "couldn't install iptables — the WiFi fallback hotspot will still come up if triggered, but joining it won't automatically pop up a sign-in prompt (browsing directly to the dashboard's address still works)"
+fi
+
+if systemctl is-active --quiet NetworkManager; then
+	log "NetworkManager is active — WiFi hotspot fallback is available"
+else
+	warn "NetworkManager isn't active on this system — the WiFi fallback hotspot (internal/wifi.DetectBackend) won't be available until it is. If this node uses a different network stack (systemd-networkd, ifupdown, ...), switch it to NetworkManager to get this feature; ASL3 has no other supported backend."
+fi
+
 # --- SkywarnPlus (optional weather-alert automation) ------------------------
 #
 # A third-party, no-longer-maintained tool
@@ -416,10 +441,6 @@ else
 			;;
 	esac
 fi
-
-# TODO (later phases, per the project plan):
-#   - NetworkManager verification -- confirm NetworkManager is active, not
-#     install a competing network stack.
 
 # --- pull latest ---------------------------------------------------------
 
