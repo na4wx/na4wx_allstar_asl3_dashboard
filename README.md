@@ -25,15 +25,17 @@ When it finishes, it prints the URL to open (e.g. `http://<node-ip>:8089/setup`)
 
 If you'd rather build a binary elsewhere and copy it over, see [Cross-compiling and deploying manually](#cross-compiling-and-deploying-manually) below.
 
-## What it does
+## Features
 
-- **Home** — live connected-station table (driven over a WebSocket, no polling/reloads), quick link/unlink/monitor to another node, and a connection history log.
-- **Node directory & node editor** — add/edit/delete nodes; tabs for Setup, Radio tuning (RX/TX levels, CTCSS, SA818/DRA818 programming over serial), Allstar Network (registration), Sounds & Tones (upload, or generate with Piper/espeak-ng text-to-speech), Scheduler (timed sound playback, scheduled connections), Commands (DTMF macros and function-macro definitions), and SkywarnPlus (weather-alert automation, if installed).
-- **System** — hostname, admin password, Asterisk restart/reboot, WiFi (scan/connect, with an automatic fallback hotspot when the node has no network), and Cloud Sync settings.
-- **Raw config editor** — view/edit the underlying `.conf` files directly for anything the structured pages don't cover yet.
-- **Cloud Sync** *(optional, opt-in)* — an outbound-only WebSocket connection to a companion cloud service for remote monitoring/administration without opening any inbound ports on the node. Off by default.
+- Live home dashboard — connected stations, link/unlink/monitor, connection history
+- Node editor — Setup, Radio tuning, SA818/DRA818 programming, AllStarLink registration, Sounds & Tones, Scheduler, Commands, SkywarnPlus
+- Text-to-speech sound generation (Piper/espeak-ng) and file uploads
+- WiFi scan/connect, with an automatic open fallback hotspot + captive portal when the node has no network
+- Raw config editor for anything the structured pages don't cover
+- Optional, opt-in outbound-only Cloud Sync for remote administration
+- Single static Go binary — no database, no Node/npm build step
 
-Every save is applied straight to Asterisk's config files (respecting ASL3's template-inheritance format) and, where it matters, live-reloaded via `asterisk -rx` — no separate "apply" step, and a red banner appears if a change needs a full Asterisk restart to take effect.
+Every save writes straight to Asterisk's config files and, where it matters, live-reloads via `asterisk -rx` — no separate "apply" step.
 
 ## Requirements
 
