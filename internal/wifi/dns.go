@@ -40,8 +40,20 @@ type wildcardDNSServer struct {
 // same as captive_portal.go's own server: a failure here doesn't fail
 // hotspot startup, it just means no automatic captive-portal popup --
 // manually browsing to the dashboard's real address still works.
+//
+// Binds every interface (no host in the address), not just loopback --
+// confirmed on a real node this must: iptables' own REDIRECT target (see
+// addDNSRedirectRules) rewrites a PREROUTING packet's destination to the
+// *incoming interface's own real address* (hotspotStaticIP here), not
+// 127.0.0.1 -- that mapping to loopback only applies to locally
+// generated packets, not ones arriving from wlan0. A responder bound to
+// 127.0.0.1 alone never receives a hotspot client's redirected query at
+// all, so the captive-portal popup silently never fires even though the
+// HTTP redirect (already interface-agnostic, see captivePortalInternalPort)
+// works fine on its own -- exactly the "portal doesn't appear but the
+// dashboard is reachable directly" symptom this bug produced.
 func startWildcardDNS() *wildcardDNSServer {
-	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1"+captiveDNSInternalPort)
+	addr, err := net.ResolveUDPAddr("udp", captiveDNSInternalPort)
 	if err != nil {
 		log.Printf("wifi: captive-portal DNS: resolve %s: %v", captiveDNSInternalPort, err)
 		return nil
