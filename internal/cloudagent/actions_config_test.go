@@ -111,6 +111,62 @@ func TestActionConfigUpdateNodeSettings(t *testing.T) {
 	}
 }
 
+func TestActionConfigSaveNodeCreatesNew(t *testing.T) {
+	a := newConfigTestAgent(t)
+	params, _ := json.Marshal(map[string]string{
+		"number":    "54322",
+		"rxChannel": "Local/pseudo",
+		"duplex":    "1",
+		"hangTime":  "3000",
+		"idTime":    "300000",
+	})
+	result, err := a.dispatch(context.Background(), "config.saveNode", params)
+	if err != nil {
+		t.Fatalf("dispatch error = %v", err)
+	}
+	view := result.(*config.NodeView)
+	if view.RxChannel != "Local/pseudo" || view.Duplex != "1" {
+		t.Fatalf("view = %+v, want RxChannel=Local/pseudo Duplex=1", view)
+	}
+	if view.HangTime != "3000" || view.IDTime != "300000" {
+		t.Fatalf("view = %+v, want HangTime=3000 IDTime=300000", view)
+	}
+}
+
+func TestActionConfigSaveNodeUpdatesExistingLeavingBlankFieldsAlone(t *testing.T) {
+	a := newConfigTestAgent(t)
+	before, err := a.store.LoadNode("1999")
+	if err != nil {
+		t.Fatalf("LoadNode error = %v", err)
+	}
+	params, _ := json.Marshal(map[string]string{
+		"number":   "1999",
+		"hangTime": "9000",
+	})
+	result, err := a.dispatch(context.Background(), "config.saveNode", params)
+	if err != nil {
+		t.Fatalf("dispatch error = %v", err)
+	}
+	view := result.(*config.NodeView)
+	if view.HangTime != "9000" {
+		t.Errorf("HangTime = %q, want 9000", view.HangTime)
+	}
+	if view.RxChannel != before.RxChannel {
+		t.Errorf("RxChannel = %q, want unchanged %q", view.RxChannel, before.RxChannel)
+	}
+	if view.Duplex != before.Duplex {
+		t.Errorf("Duplex = %q, want unchanged %q", view.Duplex, before.Duplex)
+	}
+}
+
+func TestActionConfigSaveNodeRejectsBadNumber(t *testing.T) {
+	a := newConfigTestAgent(t)
+	params, _ := json.Marshal(map[string]string{"number": "not-a-node"})
+	if _, err := a.dispatch(context.Background(), "config.saveNode", params); err == nil {
+		t.Fatal("expected an error for an invalid node number")
+	}
+}
+
 func TestActionConfigUpdateRadioSettings(t *testing.T) {
 	a := newConfigTestAgent(t)
 	params, _ := json.Marshal(map[string]any{

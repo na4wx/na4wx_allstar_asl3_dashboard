@@ -69,6 +69,87 @@ func (a *Agent) actionConfigDeleteNode(_ context.Context, params json.RawMessage
 	return map[string]bool{"ok": true}, nil
 }
 
+// configSaveNodeParams mirrors the cloud client's own Node shape
+// (client/src/api/nodes.ts) exactly, field for field. dialString,
+// txChannel, and toTime are accepted but ignored -- they're HamVoIP-era
+// fields with no ASL3 equivalent (see config.NodeView's own doc comment);
+// the cloud form still shows them, so this stays lenient about receiving
+// them rather than failing the whole save over three fields nothing on
+// this side has ever used.
+type configSaveNodeParams struct {
+	Number      string `json:"number"`
+	RXChannel   string `json:"rxChannel"`
+	Duplex      string `json:"duplex"`
+	Telemetry   string `json:"telemetry"`
+	Morse       string `json:"morse"`
+	Functions   string `json:"functions"`
+	Macro       string `json:"macro"`
+	HangTime    string `json:"hangTime"`
+	AltHangTime string `json:"altHangTime"`
+	IDTime      string `json:"idTime"`
+	IDRecording string `json:"idRecording"`
+	Scheduler   string `json:"scheduler"`
+}
+
+// actionConfigSaveNode is a create-or-update covering every field the
+// cloud's node Setup tab edits in one relayed call, matching that page's
+// single "Save" button. Unlike internal/server's own local UI (which
+// splits these across handleNodeUpdate/handleNodeRadioTuningUpdate/
+// handleNodeStationIDUpdate, one per tab/form), the cloud form is a
+// single page with a single submit, so this wraps CreateNode +
+// UpdateNodeSettings together rather than requiring the client to know
+// about and sequence three separate relayed actions for what is, on
+// every one of these fields, a plain key on the node's own rpt.conf
+// stanza. Courtesy tones deliberately stay out of this (see
+// config.setCourtesyTones's own doc comment) -- the cloud client already
+// calls that separately and never includes those fields here.
+//
+// A field left blank by the caller is left untouched on an existing
+// node (matching handleNodeRadioTuningUpdate's own "only touch what was
+// actually provided" behavior) rather than being written as an empty
+// value and clobbering whatever was already there.
+func (a *Agent) actionConfigSaveNode(_ context.Context, params json.RawMessage) (any, error) {
+	var p configSaveNodeParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("bad params: %w", err)
+	}
+	if !config.ValidNodeNumber(p.Number) {
+		return nil, fmt.Errorf("%q is not a valid node number", p.Number)
+	}
+
+	if _, err := a.store.LoadNode(p.Number); err != nil {
+		if err := a.store.CreateNode(p.Number, p.RXChannel, p.Duplex); err != nil {
+			return nil, err
+		}
+	}
+
+	updates := map[string]string{}
+	for key, v := range map[string]string{
+		"rxchannel":   p.RXChannel,
+		"duplex":      p.Duplex,
+		"telemetry":   p.Telemetry,
+		"morse":       p.Morse,
+		"functions":   p.Functions,
+		"macro":       p.Macro,
+		"hangtime":    p.HangTime,
+		"althangtime": p.AltHangTime,
+		"idtime":      p.IDTime,
+		"idrecording": p.IDRecording,
+		"scheduler":   p.Scheduler,
+	} {
+		if v != "" {
+			updates[key] = v
+		}
+	}
+	if len(updates) > 0 {
+		if err := a.store.UpdateNodeSettings(p.Number, updates); err != nil {
+			return nil, err
+		}
+	}
+
+	return a.store.LoadNode(p.Number)
+}
+
 type configUpdateNodeSettingsParams struct {
 	Number  string            `json:"number"`
 	Updates map[string]string `json:"updates"`

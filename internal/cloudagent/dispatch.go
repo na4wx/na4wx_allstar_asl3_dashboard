@@ -52,6 +52,7 @@ func (a *Agent) actions() map[string]actionFunc {
 		"config.loadNode":            a.actionConfigLoadNode,
 		"config.createNode":          a.actionConfigCreateNode,
 		"config.deleteNode":          a.actionConfigDeleteNode,
+		"config.saveNode":            a.actionConfigSaveNode,
 		"config.updateNodeSettings":  a.actionConfigUpdateNodeSettings,
 		"config.updateRadioSettings": a.actionConfigUpdateRadioSettings,
 		"config.setCourtesyTones":    a.actionConfigSetCourtesyTones,
