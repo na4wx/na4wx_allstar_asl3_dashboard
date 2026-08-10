@@ -7,6 +7,7 @@ A browser-based configuration dashboard for [AllStarLink 3](https://allstarlink.
 On a real ASL3 node (Debian 12/13, amd64 or arm64), as root, from a clone of this repo:
 
 ```bash
+sudo apt install -y git
 git clone https://github.com/na4wx/na4wx_allstar_asl3_dashboard.git
 mkdir na4wx_allstar_asl3_dashboard
 cd na4wx_allstar_asl3_dashboard
