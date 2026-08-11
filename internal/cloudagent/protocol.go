@@ -23,9 +23,17 @@ type envelope struct {
 	// to tell which one it's talking to. Omitted by an older build that
 	// predates this field; the cloud treats that the same as this app
 	// until it redeploys.
-	APIKey string   `json:"apiKey,omitempty"`
-	App    string   `json:"app,omitempty"`
-	Nodes  []string `json:"nodes,omitempty"`
+	APIKey string `json:"apiKey,omitempty"`
+	App    string `json:"app,omitempty"`
+
+	// Nodes is also re-sent on every status event below (see
+	// heartbeatLoop in client.go), not just hello -- the cloud's own
+	// cached node list (Device.nodes) needs a way to notice a node
+	// being added/renamed locally without this process's own
+	// connection dropping and re-hello-ing, which is the common case
+	// (editing rpt.conf through the local dashboard doesn't restart
+	// this process).
+	Nodes []string `json:"nodes,omitempty"`
 
 	// helloAck (cloud -> node): the cloud's reply to hello. This isn't
 	// in the plan's original wire sketch but is needed to implement its
