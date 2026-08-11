@@ -66,6 +66,19 @@ cd "$REPO_ROOT"
 mkdir -p /etc/asl3-gui
 echo "$REPO_ROOT" > /etc/asl3-gui/repo-dir
 
+# This script always runs as root (checked above), but the checkout is
+# normally cloned by whatever regular user ran `sudo ./install.sh` --
+# without this, every git command below (this run's own "pull latest"
+# section, and every future run of this same script triggered by the
+# System page's "Check for updates" -> "Run update now" button, which
+# re-invokes this script the exact same way) fails outright with git's
+# own "dubious ownership" refusal (exit 128) the moment root touches a
+# repo it doesn't own. --global (root's own ~/.gitconfig) rather than
+# scoped to one command, since install.sh itself has no single call
+# site to attach a one-off override to the way internal/server/update.go's
+# own read-only git calls do.
+git config --global --add safe.directory "$REPO_ROOT"
+
 apt_install() {
 	apt-get update -qq
 	apt-get install -y --no-install-recommends "$@"

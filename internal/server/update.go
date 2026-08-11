@@ -65,11 +65,20 @@ type updateStatus struct {
 }
 
 // runGit runs git -C dir <args> under updateGitTimeout, returning
-// trimmed stdout.
+// trimmed stdout. Always passes -c safe.directory=dir -- this process
+// runs as root (see the systemd unit), but the checkout was normally
+// cloned by whatever regular user ran install.sh by hand, so without
+// this every git call here fails outright with git's own "dubious
+// ownership" refusal (exit 128) the moment root touches a repo it
+// doesn't own. Scoped to just this one invocation via -c rather than
+// writing to root's own ~/.gitconfig, so this never depends on (or
+// mutates) any persistent config -- see install.sh's own comment for
+// why *it* still needs a persistent version of this same fix.
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, updateGitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	fullArgs := append([]string{"-c", "safe.directory=" + dir, "-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
