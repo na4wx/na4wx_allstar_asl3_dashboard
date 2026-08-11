@@ -258,6 +258,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	// package's own doc comment.
 	s.mux.HandleFunc("GET /{$}", s.requireAuth(s.handleHome))
 	s.mux.HandleFunc("GET /stats", s.requireAuth(s.handleStats))
+	s.mux.HandleFunc("GET /api/status", s.requireAuth(s.handleAPIStatus))
 	s.mux.HandleFunc("GET /config", s.requireAuth(s.handleConfigIndex))
 	s.mux.HandleFunc("GET /config/{file}", s.requireAuth(s.handleConfigFile))
 	s.mux.HandleFunc("POST /config/{file}", s.requireAuth(s.handleConfigSave))

@@ -112,6 +112,20 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	s.renderStats(w, r, pageData{LoggedIn: true})
 }
 
+// handleAPIStatus answers the Stats page's own short-polling refresh of
+// its status pill/uptime/hostname (see app.js's initStatusPoll) -- the
+// page's initial render already has this via renderStats below, but
+// that poll only ever had a client-side fetch call and no matching
+// route to answer it, so it 404ed on every single tick and immediately
+// flipped the pill to "Status unavailable" a few seconds after every
+// page load, even though the server-rendered values right above it
+// were (and stayed) correct the whole time. Same system.Snapshot this
+// page's own initial render already uses, just as its own JSON
+// endpoint instead of baked into the full page.
+func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, system.Snapshot(r.Context(), s.asteriskBin))
+}
+
 func (s *Server) renderStats(w http.ResponseWriter, r *http.Request, pd pageData) {
 	nodes, status, quick, err := s.gatherNodeStatuses(r)
 	if err != nil {
