@@ -1165,6 +1165,220 @@ document.addEventListener("click", (e) => {
   peerTopologyModal.show(firstCell.textContent.trim());
 });
 
+// System page's "Check for updates" modal -- same build()/show() shape
+// as peerTopologyModal above, plus a second phase (runUpdate) that
+// opens a dedicated WebSocket (not the shared /ws nav socket -- this
+// carries raw install.sh output, not a page to swap in) and streams
+// output live into a <pre> block.
+const updateModal = (function () {
+  let backdrop, bodyEl;
+
+  function build() {
+    backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.hidden = true;
+
+    const card = document.createElement("div");
+    card.className = "modal-card modal-card--wide";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+
+    const header = document.createElement("div");
+    header.className = "modal-card-header";
+    const titleEl = document.createElement("h2");
+    titleEl.textContent = "Software updates";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "modal-close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", hide);
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+    card.appendChild(header);
+
+    bodyEl = document.createElement("div");
+    bodyEl.className = "modal-card-body";
+    card.appendChild(bodyEl);
+
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) hide();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (!backdrop.hidden && e.key === "Escape") hide();
+    });
+  }
+
+  function hide() {
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  function setBody(...children) {
+    bodyEl.replaceChildren(...children);
+  }
+
+  function hintEl(text) {
+    const div = document.createElement("div");
+    div.className = "hint";
+    div.textContent = text;
+    return div;
+  }
+
+  function checkStatus() {
+    setBody(hintEl("Checking for updates…"));
+    fetch("/system/update/check")
+      .then((r) => {
+        if (!r.ok) throw new Error("request failed");
+        return r.json();
+      })
+      .then(renderStatus)
+      .catch(() => setBody(hintEl("Couldn't check for updates right now. Try again in a moment.")));
+  }
+
+  function renderStatus(st) {
+    if (!st.available) {
+      setBody(hintEl("Update checking isn't set up on this device — it's only available when the app was installed by running install.sh from a real git checkout, not deployed as a standalone binary."));
+      return;
+    }
+    if (st.error) {
+      setBody(hintEl(st.error));
+      return;
+    }
+    if (st.upToDate) {
+      const label = st.branch ? " (branch " + st.branch + ")" : "";
+      setBody(hintEl("You're up to date" + label + "."));
+      return;
+    }
+
+    const nodes = [];
+    const summary = document.createElement("p");
+    summary.className = "section-intro";
+    const count = st.behind + (st.behind === 1 ? " update" : " updates");
+    summary.textContent = count + " available on branch " + st.branch + ":";
+    nodes.push(summary);
+
+    if (st.commits && st.commits.length) {
+      const pre = document.createElement("pre");
+      pre.className = "raw-block";
+      pre.textContent = st.commits.join("\n") + (st.behind > st.commits.length ? "\n…" : "");
+      nodes.push(pre);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const runBtn = document.createElement("button");
+    runBtn.type = "button";
+    runBtn.className = "primary";
+    runBtn.textContent = "Run update now";
+    runBtn.addEventListener("click", () => {
+      confirmModal("Pull and rebuild now? This restarts the dashboard once it finishes — any open pages will need a reload, and the radio itself is unaffected.", { okLabel: "Run update" }).then((ok) => {
+        if (ok) runUpdate();
+      });
+    });
+    actions.appendChild(runBtn);
+    nodes.push(actions);
+
+    setBody(...nodes);
+  }
+
+  function runUpdate() {
+    const pre = document.createElement("pre");
+    pre.className = "raw-block";
+    pre.style.maxHeight = "320px";
+    pre.style.overflowY = "auto";
+    pre.textContent = "";
+    setBody(pre);
+
+    const appendLine = (text) => {
+      pre.textContent += (pre.textContent ? "\n" : "") + text;
+      pre.scrollTop = pre.scrollHeight;
+    };
+
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(proto + "//" + location.host + "/system/update/run");
+    let finished = false;
+
+    socket.addEventListener("message", (ev) => {
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (msg.type === "line") {
+        appendLine(msg.line);
+      } else if (msg.type === "error") {
+        finished = true;
+        appendLine("");
+        appendLine("Failed: " + msg.line);
+      } else if (msg.type === "done") {
+        finished = true;
+        appendLine("");
+        appendLine("Update complete — restarting…");
+        waitForRestart();
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      // A close with no "done"/"error" ever received is the expected
+      // shape of a *successful* run (see update.go's own doc comment:
+      // install.sh's own last step restarts this process, which always
+      // wins the race against that final message landing first) -- so
+      // this reads as success, not silently doing nothing.
+      if (!finished) {
+        appendLine("");
+        appendLine("Connection closed — the dashboard is most likely restarting now.");
+        waitForRestart();
+      }
+    });
+  }
+
+  // Polls / every couple seconds until it answers again, then offers a
+  // reload -- install.sh's own final act is restarting this very
+  // process, so there's a real gap (a few seconds, typically) where
+  // nothing is listening at all.
+  function waitForRestart() {
+    const status = document.createElement("p");
+    status.className = "hint";
+    status.textContent = "Waiting for the dashboard to come back…";
+    bodyEl.appendChild(status);
+
+    const poll = () => {
+      fetch("/", { method: "HEAD", cache: "no-store" })
+        .then(() => {
+          status.textContent = "Back up.";
+          const actions = document.createElement("div");
+          actions.className = "actions";
+          const reloadBtn = document.createElement("button");
+          reloadBtn.type = "button";
+          reloadBtn.className = "primary";
+          reloadBtn.textContent = "Reload page";
+          reloadBtn.addEventListener("click", () => location.reload());
+          actions.appendChild(reloadBtn);
+          bodyEl.appendChild(actions);
+        })
+        .catch(() => setTimeout(poll, 2000));
+    };
+    setTimeout(poll, 2000);
+  }
+
+  function show() {
+    if (!backdrop) build();
+    backdrop.hidden = false;
+    checkStatus();
+  }
+
+  return { show };
+})();
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-check-updates-btn]")) return;
+  updateModal.show();
+});
+
 // Runs every stateful, content-scoped init above once on first load and
 // again after every AppSocket content swap (a saved form, a link
 // navigation -- anything that replaces <main>). Each function re-scans

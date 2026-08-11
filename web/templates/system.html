@@ -114,6 +114,16 @@
 
 <h2 class="section-heading">System control</h2>
 <div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">Software updates</h2>
+    {{template "help" "Checks this app's own git checkout against its upstream branch and, if it's behind, offers to pull and rebuild -- the same thing running install.sh by hand does. Only available on a device set up via the top-level install.sh; a device deployed by copying a pre-built binary over has no git checkout for this to check."}}
+  </div>
+  <div class="actions" style="margin-top:0">
+    <button type="button" data-check-updates-btn>Check for updates</button>
+  </div>
+</div>
+
+<div class="card">
   <h2>Restart options</h2>
   <div class="row">
     <div class="field" style="flex:none">

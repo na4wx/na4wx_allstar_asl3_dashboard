@@ -297,6 +297,8 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
 	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
 	s.mux.HandleFunc("POST /system/cloud", s.requireAuth(s.handleSystemCloudSave))
+	s.mux.HandleFunc("GET /system/update/check", s.requireAuth(s.handleUpdateCheck))
+	s.mux.HandleFunc("GET /system/update/run", s.requireAuth(s.handleUpdateStream))
 }
 
 // pageData is the common template context. Handlers embed it and add

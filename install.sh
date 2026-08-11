@@ -56,6 +56,16 @@ REPO_ROOT=$(cd "$(dirname "$0")" && pwd)
 cd "$REPO_ROOT"
 [ -d .git ] || err "$REPO_ROOT is not a git checkout — clone the repo first"
 
+# Recorded so the running app itself can find this checkout later --
+# see internal/server/update.go, which reads this to power the System
+# page's "Check for updates" button (git fetch/compare, then re-run
+# this exact script to actually update). Written early and
+# unconditionally, before anything below can fail, so even an
+# interrupted first-time install still leaves the app able to find its
+# own source for next time.
+mkdir -p /etc/asl3-gui
+echo "$REPO_ROOT" > /etc/asl3-gui/repo-dir
+
 apt_install() {
 	apt-get update -qq
 	apt-get install -y --no-install-recommends "$@"
