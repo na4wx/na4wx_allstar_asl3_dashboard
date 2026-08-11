@@ -126,6 +126,16 @@ type Server struct {
 	// Asterisk itself also restarts on reboot and so has already picked
 	// up that change by the time this process is running again to ask.
 	restartNeeded atomic.Bool
+
+	// updateAvailable mirrors the System page's own "Check for updates"
+	// result, refreshed in the background every updateCheckInterval (see
+	// StartUpdateCheckPoller in update.go) -- drives the navbar's own
+	// "Update available" link so an operator doesn't have to think to go
+	// check. Same in-memory-only, "starts false on every restart"
+	// reasoning as restartNeeded: a real update pull also restarts this
+	// process, so the flag naturally clears itself the moment it would
+	// have gone stale anyway.
+	updateAvailable atomic.Bool
 }
 
 // NodeDB exposes the node directory so main can drive its own
@@ -216,7 +226,10 @@ func (s *Server) StartWiFiWatchdog(ctx context.Context) {
 // routes with a real handler are registered in routes() below.
 func (s *Server) parseTemplates(templatesFS fs.FS) (map[string]*template.Template, error) {
 	pages := []string{"setup.html", "login.html", "home.html", "stats.html", "nodes_index.html", "node_edit.html", "node_new.html", "node_form.html", "config.html", "system.html", "radio_form.html"}
-	funcs := template.FuncMap{"restartNeeded": func() bool { return s.restartNeeded.Load() }}
+	funcs := template.FuncMap{
+		"restartNeeded":   func() bool { return s.restartNeeded.Load() },
+		"updateAvailable": func() bool { return s.updateAvailable.Load() },
+	}
 	out := map[string]*template.Template{}
 	for _, page := range pages {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templatesFS, "layout.html", "radio_device_fields.html", "node_history.html", page)

@@ -43,6 +43,46 @@ const repoDirMarkerPath = "/etc/asl3-gui/repo-dir"
 // that a stuck git process doesn't hang the whole status check.
 const updateGitTimeout = 30 * time.Second
 
+// updateCheckInterval is how often the background poller refreshes
+// s.updateAvailable -- the directory changes slowly (a real release,
+// not a per-minute thing), and this is a background nicety (the System
+// page's own "Check for updates" button always does a fresh, immediate
+// check regardless), so twice a day is plenty.
+const updateCheckInterval = 12 * time.Hour
+
+// StartUpdateCheckPoller checks for updates once immediately, then every
+// updateCheckInterval, keeping s.updateAvailable current for the
+// navbar's own "Update available" link -- see that field's own doc
+// comment. Runs until ctx is cancelled. Call once, from main.
+func (s *Server) StartUpdateCheckPoller(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(updateCheckInterval)
+		defer ticker.Stop()
+		s.refreshUpdateAvailable(ctx)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.refreshUpdateAvailable(ctx)
+			}
+		}
+	}()
+}
+
+// refreshUpdateAvailable is StartUpdateCheckPoller's own per-tick body,
+// split out so handleUpdateStream can call it too (a successful update
+// run restarts this process before this would ever fire again on its
+// own, but a *failed* run doesn't -- worth refreshing either way so the
+// navbar link doesn't keep pointing at an update that either already
+// landed or never will). An error or "checking unavailable" result
+// both clear the flag: neither means "an update is known to be
+// available," which is the one thing this flag promises.
+func (s *Server) refreshUpdateAvailable(ctx context.Context) {
+	st := checkForUpdatesInDir(ctx, repoDir())
+	s.updateAvailable.Store(st.Available && st.Error == "" && !st.UpToDate)
+}
+
 // repoDir reads the marker install.sh writes, trimmed of whitespace. An
 // empty result (missing file, or a file that's somehow empty) means
 // "not configured" -- callers treat that as "update checking
@@ -123,7 +163,13 @@ func checkForUpdatesInDir(ctx context.Context, dir string) updateStatus {
 }
 
 func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, checkForUpdatesInDir(r.Context(), repoDir()))
+	st := checkForUpdatesInDir(r.Context(), repoDir())
+	// A fresh check just for this operator's own click is already the
+	// most current answer there is -- keep the navbar's own flag (and
+	// every other page's) in sync with what this page is about to show,
+	// rather than leaving it to catch up on the next scheduled tick.
+	s.updateAvailable.Store(st.Available && st.Error == "" && !st.UpToDate)
+	writeJSON(w, st)
 }
 
 // updateStreamMsg is the one message shape sent over
@@ -197,6 +243,14 @@ func (s *Server) handleUpdateStream(w http.ResponseWriter, r *http.Request) {
 
 	waitErr := cmd.Wait()
 	if waitErr != nil {
+		// Unlike a successful run (whose own last step restarts this
+		// process, naturally invalidating whatever the flag was), a
+		// *failed* run leaves this process running -- so the navbar's
+		// own link would otherwise keep pointing at "System control"
+		// without anything new to report there. Best-effort: this is a
+		// nicety on top of an already-reported failure, not itself worth
+		// failing the request over.
+		s.refreshUpdateAvailable(context.Background())
 		send(updateStreamMsg{Type: "error", Line: waitErr.Error()})
 		return
 	}

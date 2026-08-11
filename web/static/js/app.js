@@ -632,11 +632,20 @@ function initTabs() {
     b.addEventListener("click", () => activate(b.getAttribute("data-tab-target")));
   });
 
+  // ?tab=... (e.g. the navbar's own "Update available" link, which
+  // points at /system?tab=control) wins over whatever tab was last
+  // open here -- an explicit link to a specific tab should always land
+  // on that tab, not wherever this browser happened to leave off.
+  // activate() below still records it as the new "last open tab" via
+  // its own localStorage.setItem, so a plain revisit to /system after
+  // following that link keeps landing on the same place.
+  const wanted = new URLSearchParams(location.search).get("tab");
+
   let initial = null;
   try {
     initial = localStorage.getItem(storageKey);
   } catch (e) {}
-  activate(initial || buttons[0].getAttribute("data-tab-target"));
+  activate(wanted || initial || buttons[0].getAttribute("data-tab-target"));
 }
 
 // Node page "radio hardware" toggle and the generalized multi-group

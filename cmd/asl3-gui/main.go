@@ -83,6 +83,7 @@ func main() {
 	srv.StartCloudAgent(context.Background())
 	srv.StartSoundSchedulePoller(context.Background())
 	srv.StartWXTonePoller(context.Background())
+	srv.StartUpdateCheckPoller(context.Background())
 
 	// Sample each node's link state in the background so the home
 	// page's connection history reflects what actually happened, not

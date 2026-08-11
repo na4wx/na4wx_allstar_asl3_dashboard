@@ -124,6 +124,23 @@ header.topbar nav a {
 }
 header.topbar nav a:hover { color: var(--text); background: var(--surface-2); }
 
+/* Nav's own "Update available" link (see layout.html) -- deliberately
+   reads as a small badge/button rather than a plain nav link like its
+   siblings, since the whole point is to catch the eye of an operator
+   who wasn't specifically looking for it. Links straight to the System
+   page's own System control tab (see app.js's initTabs ?tab= handling)
+   rather than just the System page's default tab. */
+.nav-update-badge {
+  color: var(--accent) !important;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  margin-left: 0.4rem;
+}
+.nav-update-badge:hover {
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
+}
+
 header.topbar nav form { margin-left: 1.25rem; }
 
 .topbar-right {
@@ -800,6 +817,7 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   }
   header.topbar nav form { margin: 0.25rem 0 0; }
   header.topbar nav form button { width: 100%; }
+  .nav-update-badge { margin-left: 0; margin-top: 0.25rem; }
 
   /* A handful of buttons on this site carry a full sentence of label
      text (e.g. "Add placeholder device & try to bring Asterisk up") --

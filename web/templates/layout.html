@@ -28,6 +28,7 @@
         <a href="/stats">Status</a>
         <a href="/system">System</a>
         <a href="/config">Raw Config</a>
+        {{if updateAvailable}}<a href="/system?tab=control" class="nav-update-badge">Update available</a>{{end}}
         <form action="/logout" method="post">
           <button type="submit">Log out</button>
         </form>
