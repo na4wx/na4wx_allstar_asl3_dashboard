@@ -59,7 +59,14 @@
     <div class="row">
       <div class="field">
         <label for="quick_target_{{.Number}}">Other node's number</label>
-        <input type="text" id="quick_target_{{.Number}}" name="target" placeholder="2000" required>
+        <div class="quick-target-row">
+          <input type="text" id="quick_target_{{.Number}}" name="target" placeholder="2000" required data-target-node>
+          <button type="button" class="btn-icon" data-callsign-toggle aria-label="Find by callsign" title="Find by callsign">&#128269;</button>
+        </div>
+        <div class="callsign-search" data-callsign-search-wrap hidden>
+          <input type="text" placeholder="Search by callsign…" autocomplete="off" data-callsign-search>
+          <ul class="callsign-results" data-callsign-results hidden></ul>
+        </div>
         <div class="hint">The node you want to connect to, e.g. 2000.</div>
       </div>
     </div>

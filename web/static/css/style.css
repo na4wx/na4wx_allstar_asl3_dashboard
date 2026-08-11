@@ -927,12 +927,40 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   margin: 0.15rem 0;
 }
 
-/* Callsign search's own results dropdown (Commands tab's Connect/
-   disconnect card) -- positioned relative to .callsign-search so the
-   list floats over whatever's below it instead of pushing the page
-   layout around as results appear/disappear. */
+/* "Find by callsign" (Home page's own Connect card) -- deliberately
+   minimal: a plain, borderless icon sitting right against the node-
+   number field, easy to overlook until you're looking for it, rather
+   than a second labeled field competing with the one most people
+   already know how to fill in. */
+.quick-target-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.quick-target-row input {
+  flex: 1;
+}
+.btn-icon {
+  flex: none;
+  padding: 0.5rem 0.6rem !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+}
+.btn-icon:hover {
+  background: var(--surface-2) !important;
+  color: var(--text);
+}
+
+/* Collapsed by default (see the `hidden` attribute in home.html) --
+   positioned relative so the results list below floats over whatever's
+   below it instead of pushing the page layout around as they appear/
+   disappear. */
 .callsign-search {
   position: relative;
+  margin-top: 0.5rem;
 }
 .callsign-results {
   position: absolute;

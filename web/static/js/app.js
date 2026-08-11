@@ -696,18 +696,37 @@ document.addEventListener("click", (e) => {
   digitsField.focus();
 });
 
-// Callsign search (same Connect/disconnect card, [data-callsign-search]
-// next to [data-target-node]) -- looks up a node by callsign via
-// GET /node-search, the reverse of the number->callsign labels shown
-// everywhere else in this app. Debounced so typing doesn't fire a
-// request per keystroke; delegated so it needs no re-binding after a
-// swap. "input" bubbles the same as "click" does elsewhere in this
-// file, so this is the same pattern, just a different event.
+// "Find by callsign" (Home page's own "Connect node N to another node"
+// card) -- collapsed by default behind a small icon button next to the
+// node-number field, rather than a second always-visible field, since
+// the common case is already knowing the node number. Scoped to the
+// clicked button's own .field/card throughout (Home can show one of
+// these per configured node), never a bare document-wide query.
+document.addEventListener("click", (e) => {
+  const toggle = e.target.closest("[data-callsign-toggle]");
+  if (!toggle) return;
+  const field = toggle.closest(".field");
+  const wrap = field && field.querySelector("[data-callsign-search-wrap]");
+  if (!wrap) return;
+  wrap.hidden = !wrap.hidden;
+  if (!wrap.hidden) {
+    const input = wrap.querySelector("[data-callsign-search]");
+    if (input) input.focus();
+  }
+});
+
+// Looks up a node by callsign via GET /node-search, the reverse of the
+// number->callsign labels shown everywhere else in this app. Debounced
+// so typing doesn't fire a request per keystroke; delegated so it needs
+// no re-binding after a swap. "input" bubbles the same as "click" does
+// elsewhere in this file, so this is the same pattern, just a
+// different event.
 let callsignSearchTimer = null;
 document.addEventListener("input", (e) => {
   const input = e.target.closest("[data-callsign-search]");
   if (!input) return;
-  const results = document.querySelector("[data-callsign-results]");
+  const wrap = input.closest("[data-callsign-search-wrap]");
+  const results = wrap && wrap.querySelector("[data-callsign-results]");
   if (!results) return;
 
   clearTimeout(callsignSearchTimer);
@@ -746,36 +765,40 @@ document.addEventListener("input", (e) => {
   }, 250);
 });
 
-// Picking a result: fills [data-target-node] (the same field the quick
-// action buttons above read from) and clears/closes the search, same
-// as a manually typed node number would leave things.
+// Picking a result fills that same field's own [data-target-node] and
+// collapses the search box back down -- same end state as never having
+// opened it at all, except the field is now populated.
 document.addEventListener("click", (e) => {
   const li = e.target.closest("[data-callsign-results] li[data-node]");
   if (!li) return;
-  const target = document.querySelector("[data-target-node]");
-  const search = document.querySelector("[data-callsign-search]");
-  const results = document.querySelector("[data-callsign-results]");
+  const field = li.closest(".field");
+  const target = field && field.querySelector("[data-target-node]");
+  const wrap = li.closest("[data-callsign-search-wrap]");
   if (target) target.value = li.dataset.node;
-  if (search) search.value = "";
-  if (results) {
-    results.hidden = true;
-    results.replaceChildren();
+  if (wrap) {
+    const input = wrap.querySelector("[data-callsign-search]");
+    if (input) input.value = "";
+    wrap.hidden = true;
   }
 });
 
-// Clicking anywhere outside the search field/results closes the list,
-// same convention as a native <select> or browser autofill dropdown.
+// Clicking anywhere outside an open search box collapses it -- same
+// convention as a native <select> or browser autofill dropdown.
 document.addEventListener("click", (e) => {
-  if (e.target.closest(".callsign-search")) return;
-  const results = document.querySelector("[data-callsign-results]");
-  if (results) results.hidden = true;
+  if (e.target.closest("[data-callsign-toggle]") || e.target.closest("[data-callsign-search-wrap]")) return;
+  document.querySelectorAll("[data-callsign-search-wrap]:not([hidden])").forEach((wrap) => {
+    wrap.hidden = true;
+  });
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!e.target.closest("[data-callsign-search]")) return;
-  const results = document.querySelector("[data-callsign-results]");
-  if (results) results.hidden = true;
+  const wrap = e.target.closest("[data-callsign-search-wrap]");
+  if (!wrap) return;
+  wrap.hidden = true;
+  const field = wrap.closest(".field");
+  const toggle = field && field.querySelector("[data-callsign-toggle]");
+  if (toggle) toggle.focus();
 });
 
 // Show/Hide button next to a password field (see .password-field in
