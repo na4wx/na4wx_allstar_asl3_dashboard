@@ -696,6 +696,88 @@ document.addEventListener("click", (e) => {
   digitsField.focus();
 });
 
+// Callsign search (same Connect/disconnect card, [data-callsign-search]
+// next to [data-target-node]) -- looks up a node by callsign via
+// GET /node-search, the reverse of the number->callsign labels shown
+// everywhere else in this app. Debounced so typing doesn't fire a
+// request per keystroke; delegated so it needs no re-binding after a
+// swap. "input" bubbles the same as "click" does elsewhere in this
+// file, so this is the same pattern, just a different event.
+let callsignSearchTimer = null;
+document.addEventListener("input", (e) => {
+  const input = e.target.closest("[data-callsign-search]");
+  if (!input) return;
+  const results = document.querySelector("[data-callsign-results]");
+  if (!results) return;
+
+  clearTimeout(callsignSearchTimer);
+  const query = input.value.trim();
+  if (query.length < 2) {
+    results.hidden = true;
+    results.replaceChildren();
+    return;
+  }
+  callsignSearchTimer = setTimeout(() => {
+    fetch("/node-search?q=" + encodeURIComponent(query))
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((matches) => {
+        results.replaceChildren();
+        if (!matches || matches.length === 0) {
+          const li = document.createElement("li");
+          li.className = "hint";
+          li.textContent = "No matching callsigns";
+          results.appendChild(li);
+        } else {
+          matches.forEach((m) => {
+            const li = document.createElement("li");
+            li.tabIndex = 0;
+            li.dataset.node = m.number;
+            let text = m.number + " — " + m.callsign;
+            if (m.location) text += " (" + m.location + ")";
+            li.textContent = text;
+            results.appendChild(li);
+          });
+        }
+        results.hidden = false;
+      })
+      .catch(() => {
+        results.hidden = true;
+      });
+  }, 250);
+});
+
+// Picking a result: fills [data-target-node] (the same field the quick
+// action buttons above read from) and clears/closes the search, same
+// as a manually typed node number would leave things.
+document.addEventListener("click", (e) => {
+  const li = e.target.closest("[data-callsign-results] li[data-node]");
+  if (!li) return;
+  const target = document.querySelector("[data-target-node]");
+  const search = document.querySelector("[data-callsign-search]");
+  const results = document.querySelector("[data-callsign-results]");
+  if (target) target.value = li.dataset.node;
+  if (search) search.value = "";
+  if (results) {
+    results.hidden = true;
+    results.replaceChildren();
+  }
+});
+
+// Clicking anywhere outside the search field/results closes the list,
+// same convention as a native <select> or browser autofill dropdown.
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".callsign-search")) return;
+  const results = document.querySelector("[data-callsign-results]");
+  if (results) results.hidden = true;
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!e.target.closest("[data-callsign-search]")) return;
+  const results = document.querySelector("[data-callsign-results]");
+  if (results) results.hidden = true;
+});
+
 // Show/Hide button next to a password field (see .password-field in
 // style.css) -- data-toggle-password names the input's own id, rather
 // than relying on DOM position, so the button and field don't have to

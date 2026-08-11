@@ -92,6 +92,77 @@ func TestParseShortLine(t *testing.T) {
 	}
 }
 
+// searchTestStore builds a Store directly from realSample without going
+// through LoadFile/Refresh -- Search only ever reads s.entries, so this
+// is the narrowest way to set it up.
+func searchTestStore(t *testing.T) *Store {
+	t.Helper()
+	entries, err := Parse(strings.NewReader(realSample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Store{entries: entries}
+}
+
+func TestSearchExactMatchRanksFirst(t *testing.T) {
+	s := searchTestStore(t)
+	results := s.Search("KM6RPT", 10)
+	if len(results) == 0 || results[0].Number != "2003" {
+		t.Fatalf("Search(\"KM6RPT\") = %+v, want node 2003 first", results)
+	}
+}
+
+// TestSearchIsCaseInsensitive confirms a lowercase query still matches
+// -- callsigns in the real database are always uppercase, but nobody
+// types a callsign that way on a phone keyboard.
+func TestSearchIsCaseInsensitive(t *testing.T) {
+	s := searchTestStore(t)
+	results := s.Search("km6rpt", 10)
+	if len(results) == 0 || results[0].Number != "2003" {
+		t.Fatalf("Search(\"km6rpt\") = %+v, want node 2003 first", results)
+	}
+}
+
+// TestSearchPrefixBeforeSubstring confirms ranking: WB6NIL owns four
+// nodes in realSample (2000/2001/2002/2004), so a query for "WB6" should
+// return all of them (prefix matches) before anything that only
+// contains "WB6" as a substring elsewhere -- realSample has no such
+// entry, but the ranking itself is what this pins.
+func TestSearchPrefixBeforeSubstring(t *testing.T) {
+	s := searchTestStore(t)
+	results := s.Search("WB6", 10)
+	if len(results) != 4 {
+		t.Fatalf("Search(\"WB6\") returned %d results, want 4: %+v", len(results), results)
+	}
+	for _, e := range results {
+		if e.Callsign != "WB6NIL" {
+			t.Errorf("unexpected callsign %q in results", e.Callsign)
+		}
+	}
+}
+
+func TestSearchRespectsLimit(t *testing.T) {
+	s := searchTestStore(t)
+	results := s.Search("WB6", 2)
+	if len(results) != 2 {
+		t.Fatalf("Search with limit 2 returned %d results, want 2", len(results))
+	}
+}
+
+func TestSearchBlankQueryReturnsNothing(t *testing.T) {
+	s := searchTestStore(t)
+	if results := s.Search("   ", 10); results != nil {
+		t.Errorf("Search(blank) = %+v, want nil", results)
+	}
+}
+
+func TestSearchNoMatchReturnsEmpty(t *testing.T) {
+	s := searchTestStore(t)
+	if results := s.Search("NOSUCHCALL", 10); len(results) != 0 {
+		t.Errorf("Search(no match) = %+v, want empty", results)
+	}
+}
+
 func TestLabelFallsBackToDescription(t *testing.T) {
 	if got := (Entry{Callsign: "NA4WX", Description: "x"}).Label(); got != "NA4WX" {
 		t.Errorf("Label = %q, want NA4WX", got)

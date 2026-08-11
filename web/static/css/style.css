@@ -927,6 +927,44 @@ table th { color: var(--text-dim); font-weight: 550; font-size: 0.86rem; }
   margin: 0.15rem 0;
 }
 
+/* Callsign search's own results dropdown (Commands tab's Connect/
+   disconnect card) -- positioned relative to .callsign-search so the
+   list floats over whatever's below it instead of pushing the page
+   layout around as results appear/disappear. */
+.callsign-search {
+  position: relative;
+}
+.callsign-results {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.callsign-results li {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.callsign-results li:hover,
+.callsign-results li:focus {
+  background: var(--accent-soft);
+}
+.callsign-results .hint {
+  padding: 0.4rem 0.6rem;
+  cursor: default;
+}
+
 /* Node page tabs. Deliberately no rule here sets `display` on
    [data-tab-panel] itself — the modal above already hit the bug this
    avoids: an author rule setting `display` on an element beats the

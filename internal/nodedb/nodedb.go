@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -137,6 +138,54 @@ func (s *Store) Label(number string) string {
 		return e.Label()
 	}
 	return ""
+}
+
+// Search finds nodes whose callsign matches query, for "connect by
+// callsign" lookups (see internal/server's handleNodeSearch) -- the
+// reverse of Lookup, which only goes number -> callsign. A blank query
+// matches nothing (the UI should show its own "type to search" hint
+// instead of one request returning the entire directory). Ranked exact
+// match first, then prefix match, then substring match, each tier
+// sorted by number so results are stable across calls; capped at
+// limit, since the whole point is a short pick-list, not a full dump
+// of the (tens-of-thousands-of-entries) directory.
+func (s *Store) Search(query string, limit int) []Entry {
+	query = strings.ToUpper(strings.TrimSpace(query))
+	if query == "" || limit <= 0 {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var exact, prefix, substring []Entry
+	for _, e := range s.entries {
+		call := strings.ToUpper(e.Callsign)
+		if call == "" {
+			continue
+		}
+		switch {
+		case call == query:
+			exact = append(exact, e)
+		case strings.HasPrefix(call, query):
+			prefix = append(prefix, e)
+		case strings.Contains(call, query):
+			substring = append(substring, e)
+		}
+	}
+	sortEntriesByNumber(exact)
+	sortEntriesByNumber(prefix)
+	sortEntriesByNumber(substring)
+
+	results := append(exact, append(prefix, substring...)...)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results
+}
+
+func sortEntriesByNumber(entries []Entry) {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Number < entries[j].Number })
 }
 
 // Status reports what the UI needs to explain itself: how many nodes are
