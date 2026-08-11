@@ -2,7 +2,14 @@
 {{define "content"}}
 <h1>System</h1>
 
-<h2 class="section-heading">Network</h2>
+<div class="tabs">
+  <button type="button" data-tab-target="network">Network</button>
+  <button type="button" data-tab-target="control">System control</button>
+  <button type="button" data-tab-target="cloud">Cloud Sync</button>
+  <button type="button" data-tab-target="account">Account</button>
+</div>
+
+<div data-tab-panel="network">
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Device name</h2>
@@ -111,8 +118,9 @@
   {{end}}
   {{end}}
 </div>
+</div>
 
-<h2 class="section-heading">System control</h2>
+<div data-tab-panel="control">
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Software updates</h2>
@@ -146,8 +154,9 @@
     </div>
   </div>
 </div>
+</div>
 
-<h2 class="section-heading">Cloud Sync</h2>
+<div data-tab-panel="cloud">
 <div class="card">
   <div class="label-row">
     <h2 style="margin:0">Cloud Sync</h2>
@@ -202,8 +211,9 @@
     </div>
   </form>
 </div>
+</div>
 
-<h2 class="section-heading">Account</h2>
+<div data-tab-panel="account">
 <div class="card">
   <h2>Change your password</h2>
   <form method="post" action="/system/password">
@@ -225,6 +235,7 @@
       <button type="submit" class="primary">Change password</button>
     </div>
   </form>
+</div>
 </div>
 {{end}}
 {{template "layout" .}}
