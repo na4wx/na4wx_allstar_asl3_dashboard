@@ -2,9 +2,7 @@ package relay
 
 import (
 	"context"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -32,46 +30,19 @@ func (f *fakeBackend) TeardownInterface(context.Context) error {
 	return f.teardownErr
 }
 
-// fakeAsterisk writes a fake "asterisk" binary that always succeeds --
-// enough for ApplyGrant/Disable's own reload call, which this package's
-// tests don't otherwise care about the exact CLI form of (that's covered
-// by internal/system's own AsteriskReloadIax2 tests).
-func fakeAsterisk(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "asterisk")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
-		t.Fatalf("write fake asterisk: %v", err)
-	}
-	return path
-}
-
-// writeMinimalIaxConf creates a real-shaped iax.conf in dir --
-// asteriskconf.SetValues (like the real Asterisk config file it edits)
-// only ever edits an existing file, never creates one from scratch,
-// same as every real deployment where Asterisk itself ships iax.conf.
-func writeMinimalIaxConf(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "iax.conf"), []byte("[general]\n"), 0644); err != nil {
-		t.Fatalf("write iax.conf fixture: %v", err)
-	}
-}
-
 func newTestManager(t *testing.T) (*Manager, *fakeBackend) {
 	t.Helper()
-	asteriskDir := t.TempDir()
-	writeMinimalIaxConf(t, asteriskDir)
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
 	if err := settings.Save(Settings{Enabled: true, PrivateKey: "priv", PublicKey: "pub"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	m := NewManager(settings, asteriskDir, fakeAsterisk(t))
+	m := NewManager(settings)
 	fb := &fakeBackend{}
 	m.SetBackend(fb)
 	return m, fb
 }
 
-func TestApplyGrantAppliesTunnelAndWritesBindaddr(t *testing.T) {
+func TestApplyGrantAppliesTunnel(t *testing.T) {
 	m, fb := newTestManager(t)
 	grant := Grant{CloudPublicKey: "cloud-pub", Endpoint: "203.0.113.10:51820", TunnelIP: "10.90.0.2", TunnelCIDR: "/24"}
 
@@ -95,20 +66,11 @@ func TestApplyGrantAppliesTunnelAndWritesBindaddr(t *testing.T) {
 	if gotGrant != grant {
 		t.Fatalf("Status() grant = %+v, want %+v", gotGrant, grant)
 	}
-
-	iax2 := filepath.Join(m.asteriskDir, "iax.conf")
-	data, err := os.ReadFile(iax2)
-	if err != nil {
-		t.Fatalf("reading iax.conf: %v", err)
-	}
-	if got := string(data); !strings.Contains(got, "bindaddr") || !strings.Contains(got, "10.90.0.2") {
-		t.Fatalf("iax.conf = %q, want it to set bindaddr to the tunnel IP", got)
-	}
 }
 
 func TestApplyGrantFailsWithoutLocalKeypair(t *testing.T) {
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
-	m := NewManager(settings, t.TempDir(), fakeAsterisk(t))
+	m := NewManager(settings)
 	m.SetBackend(&fakeBackend{})
 
 	if err := m.ApplyGrant(context.Background(), Grant{}); err == nil {
@@ -147,7 +109,7 @@ func TestDisableTearsDownAfterApplyGrant(t *testing.T) {
 
 func TestPublicKeyForHelloReturnsFalseWhenDisabled(t *testing.T) {
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
-	m := NewManager(settings, t.TempDir(), fakeAsterisk(t))
+	m := NewManager(settings)
 
 	_, ok, err := m.PublicKeyForHello(context.Background())
 	if err != nil {
@@ -158,25 +120,12 @@ func TestPublicKeyForHelloReturnsFalseWhenDisabled(t *testing.T) {
 	}
 }
 
-// TestNewManagerResolvesEmptyAsteriskDirToDefault guards against a real
-// bug found on real hardware: an empty asteriskDir (the normal case --
-// server.New's own -asterisk-dir flag defaults to "") must resolve to
-// /etc/asterisk the same way internal/config.Store.dir() does, or
-// iax2ConfPath ends up building a bare relative "iax.conf" instead.
-func TestNewManagerResolvesEmptyAsteriskDirToDefault(t *testing.T) {
-	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
-	m := NewManager(settings, "", fakeAsterisk(t))
-	if got := m.iax2ConfPath(); got != "/etc/asterisk/iax.conf" {
-		t.Fatalf("iax2ConfPath() = %q, want %q", got, "/etc/asterisk/iax.conf")
-	}
-}
-
 func TestPublicKeyForHelloReusesExistingKeypair(t *testing.T) {
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
 	if err := settings.Save(Settings{Enabled: true, PrivateKey: "priv", PublicKey: "pub"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	m := NewManager(settings, t.TempDir(), fakeAsterisk(t))
+	m := NewManager(settings)
 
 	key, ok, err := m.PublicKeyForHello(context.Background())
 	if err != nil {

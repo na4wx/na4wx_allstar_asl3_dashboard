@@ -153,22 +153,42 @@ func (wgBackend) TeardownInterface(ctx context.Context) error {
 	return nil
 }
 
+// iax2Port is chan_iax2's own well-known port -- explicitly exempted
+// from policy routing (see applyPolicyRouting) so ordinary outbound
+// dialing to other real nodes is never affected by this package at
+// all, only Asterisk's non-IAX2 traffic (chiefly ASL3's HTTP-based node
+// registration).
+const iax2Port = "4569"
+
 // applyPolicyRouting routes the asterisk user's own outbound traffic
-// through relayIface -- needed because chan_iax2's bindaddr (set
-// elsewhere in this package, via iax.conf) only covers chan_iax2
-// itself, while ASL3's node registration is a separate HTTP-based
-// mechanism (res_rpt_http_registrations.so) with no per-application
-// bindaddr option of its own; confirmed directly against that module's
-// source (AllStarLink/app_rpt) that it never sets libcurl's
-// CURLOPT_INTERFACE, so it always uses whatever the OS's normal routing
-// table would pick. Marking by uid (rather than by destination IP)
-// covers this without needing to track register.allstarlink.org's own,
-// possibly-changing, resolved address -- and naturally covers any other
-// network traffic Asterisk itself originates too. Idempotent: deletes
-// any matching rule left over from a previous run first, same "safe to
-// call again after a crash/restart" pattern as internal/wifi's own
-// captive-portal iptables rules.
+// through relayIface, *except* its own IAX2 traffic -- needed because
+// ASL3's node registration is a separate HTTP-based mechanism
+// (res_rpt_http_registrations.so) with no per-application bindaddr
+// option of its own; confirmed directly against that module's source
+// (AllStarLink/app_rpt) that it never sets libcurl's CURLOPT_INTERFACE,
+// so it always uses whatever the OS's normal routing table would pick.
+// Marking by uid (rather than by destination IP) covers this without
+// needing to track register.allstarlink.org's own, possibly-changing,
+// resolved address.
+//
+// The IAX2 exemption is load-bearing, not an optimization: confirmed
+// the hard way on real hardware that marking *all* of the asterisk
+// user's traffic (an earlier version of this function) broke ordinary
+// outbound calls to other nodes -- chan_iax2 itself runs as the same
+// asterisk user, so its own already-working direct-dial traffic got
+// swept into the tunnel right along with the registration traffic this
+// was actually meant to fix. The exemption rule (`-j RETURN`) has to
+// come before the general MARK rule in the OUTPUT chain, since iptables
+// evaluates rules in order and the first match wins.
+//
+// Idempotent: deletes any matching rule left over from a previous run
+// first, same "safe to call again after a crash/restart" pattern as
+// internal/wifi's own captive-portal iptables rules.
 func applyPolicyRouting(ctx context.Context) error {
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN")
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN"); err != nil {
+		return fmt.Errorf("exempting IAX2 traffic from policy routing: %w", err)
+	}
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark); err != nil {
 		return fmt.Errorf("marking asterisk's outbound traffic: %w", err)
@@ -187,6 +207,7 @@ func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN")
 }
 
 // GenerateKeypair returns a fresh WireGuard private/public keypair via

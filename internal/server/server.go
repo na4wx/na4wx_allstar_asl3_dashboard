@@ -177,7 +177,7 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
 	wxTonesStore := wxtone.New(wxTonesPath)
-	relayManager := relay.NewManager(relay.NewSettingsStore(relaySettingsPath), asteriskDir, asteriskBin)
+	relayManager := relay.NewManager(relay.NewSettingsStore(relaySettingsPath))
 
 	s := &Server{
 		auth:           authMgr,

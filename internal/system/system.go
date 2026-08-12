@@ -80,20 +80,6 @@ func AsteriskReloadRpt(ctx context.Context, bin string) error {
 	return err
 }
 
-// AsteriskReloadIax2 live-reloads chan_iax2's own config (iax.conf) —
-// used after internal/relay writes a new bindaddr so the module picks up
-// the tunnel interface without a full Asterisk restart, same "reload,
-// don't restart" reasoning as AsteriskReloadRpt above. Tries the plain
-// "iax2 reload" CLI form first, falling back to "module reload
-// chan_iax2.so" for builds where the short form isn't registered.
-func AsteriskReloadIax2(ctx context.Context, bin string) error {
-	if _, err := AsteriskRX(ctx, bin, "iax2 reload"); err == nil {
-		return nil
-	}
-	_, err := AsteriskRX(ctx, bin, "module reload chan_iax2.so")
-	return err
-}
-
 // RptLocalPlay plays a sound file over node's own local RF output only —
 // confirmed by a real operator's report that it plays out the repeater's
 // own transmitter, but it never reaches any node currently linked to this

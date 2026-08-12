@@ -29,7 +29,7 @@ func (s *Server) populateSystemRelay(data *systemPageData) {
 // saves the setting -- the actual grant only shows up once the next
 // cloudagent hello round trip completes (Reload forces that
 // immediately, same as Cloud Sync's own save handler). Disabling tears
-// down any live tunnel/iax.conf change right away, a purely local
+// down any live tunnel/policy-routing state right away, a purely local
 // action independent of what the cloud side still thinks (see
 // relay.Manager.Disable's own doc comment).
 func (s *Server) handleSystemRelaySave(w http.ResponseWriter, r *http.Request) {

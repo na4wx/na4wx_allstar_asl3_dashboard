@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 	"sync"
 	"time"
-
-	"hamvoipconfiggui-asl3/internal/asteriskconf"
-	"hamvoipconfiggui-asl3/internal/system"
 )
 
 // relayReconcileInterval is how often Manager re-applies its
@@ -20,33 +16,24 @@ import (
 // time.
 const relayReconcileInterval = 5 * time.Minute
 
-// defaultAsteriskDir mirrors internal/config.Store's own "" means
-// /etc/asterisk convention (see that package's own defaultAsteriskDir)
-// -- server.New threads the same possibly-empty -asterisk-dir flag
-// value into both config.Store and this Manager, so this has to resolve
-// the empty case the exact same way config.Store.dir() does, or
-// iax2ConfPath ends up building a bare relative "iax.conf" (resolved
-// against whatever directory the process happened to be started from,
-// not the real Asterisk config directory) on every normal deployment
-// that never sets -asterisk-dir at all -- confirmed the hard way as
-// "asteriskconf: stat iax.conf: no such file or directory" on real
-// hardware.
-const defaultAsteriskDir = "/etc/asterisk"
-
 // Manager owns this node's relay tunnel state: applying a Grant handed
-// back by the cloud (bringing the WireGuard interface up, pointing
-// chan_iax2's bindaddr at the tunnel IP via iax.conf, and reloading the
-// module so it takes effect), and reversing all of that when the
-// operator disables the feature locally. Bringing chan_iax2's own
-// registration and connection traffic through the tunnel is what
-// actually makes this work — see AllStarLink's own directory model
-// (package doc comment) for why nothing less than that suffices.
+// back by the cloud (bringing the WireGuard interface up and routing
+// Asterisk's non-IAX2 outbound traffic through it — see wgctl.go's
+// applyPolicyRouting for exactly what that covers and why), and
+// reversing all of that when the operator disables the feature
+// locally. Deliberately does NOT touch chan_iax2's own config at all
+// (an earlier version of this pointed iax.conf's bindaddr at the
+// tunnel IP — removed after confirming on real hardware that it broke
+// ordinary outbound dialing to other nodes: binding chan_iax2's own
+// socket to the tunnel's private IP couples ALL of its traffic, not
+// just registration, to the tunnel, with no way to selectively exempt
+// normal calls at that layer. chan_iax2 listening on its default
+// 0.0.0.0 already receives and replies to inbound tunnel traffic fine
+// on its own, so nothing there needed changing in the first place).
 type Manager struct {
 	mu           sync.Mutex
 	backend      Backend
 	settings     *SettingsStore
-	asteriskDir  string
-	asteriskBin  string
 	currentGrant Grant
 	applied      bool
 }
@@ -55,17 +42,10 @@ type Manager struct {
 // SetBackend swaps in the real detected backend later (see
 // (*server.Server).StartRelayManager), so constructing a Manager never
 // shells out, matching internal/wifi.NewManager's own contract.
-// asteriskDir/asteriskBin are the same values already threaded through
-// server.New for every other Asterisk-config-touching feature.
-func NewManager(settings *SettingsStore, asteriskDir, asteriskBin string) *Manager {
-	if asteriskDir == "" {
-		asteriskDir = defaultAsteriskDir
-	}
+func NewManager(settings *SettingsStore) *Manager {
 	return &Manager{
-		backend:     unavailableBackend{},
-		settings:    settings,
-		asteriskDir: asteriskDir,
-		asteriskBin: asteriskBin,
+		backend:  unavailableBackend{},
+		settings: settings,
 	}
 }
 
@@ -124,15 +104,10 @@ func (m *Manager) PublicKeyForHello(ctx context.Context) (string, bool, error) {
 	return settings.PublicKey, true, nil
 }
 
-func (m *Manager) iax2ConfPath() string {
-	return filepath.Join(m.asteriskDir, "iax.conf")
-}
-
 // ApplyGrant brings the relay tunnel up (or updates it in place) using
-// grant, points chan_iax2 at the tunnel IP, and reloads it -- called
-// from client.go whenever a fresh helloAck carries a Relay grant, and
-// from Run's own periodic reconcile to self-heal drift. Idempotent:
-// re-applying the same grant is cheap and safe.
+// grant -- called from client.go whenever a fresh helloAck carries a
+// Relay grant, and from Run's own periodic reconcile to self-heal
+// drift. Idempotent: re-applying the same grant is cheap and safe.
 func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 	m.mu.Lock()
 	backend := m.backend
@@ -149,12 +124,6 @@ func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 	if err := backend.ApplyTunnel(ctx, settings.PrivateKey, grant); err != nil {
 		return fmt.Errorf("applying wireguard tunnel: %w", err)
 	}
-	if err := asteriskconf.SetValues(m.iax2ConfPath(), "general", map[string]string{"bindaddr": grant.TunnelIP}); err != nil {
-		return fmt.Errorf("writing iax.conf bindaddr: %w", err)
-	}
-	if err := system.AsteriskReloadIax2(ctx, m.asteriskBin); err != nil {
-		return fmt.Errorf("reloading chan_iax2: %w", err)
-	}
 
 	m.mu.Lock()
 	m.currentGrant = grant
@@ -163,15 +132,14 @@ func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 	return nil
 }
 
-// Disable reverses ApplyGrant: tears down the tunnel interface, resets
-// chan_iax2's bindaddr back to listening on every interface, and
-// reloads it. A no-op if nothing was ever applied. Called from the
-// System page's explicit "disable relay" action, and whenever the
-// operator turns the Settings toggle off (see internal/server's relay
-// handler) -- this is a purely local action, independent of whatever
-// the cloud side still thinks, matching how internal/cloudagent's own
-// Reload always cuts a live connection immediately rather than waiting
-// for the cloud to agree.
+// Disable reverses ApplyGrant: tears down the tunnel interface and its
+// policy-routing rules. A no-op if nothing was ever applied. Called
+// from the System page's explicit "disable relay" action, and whenever
+// the operator turns the Settings toggle off (see internal/server's
+// relay handler) -- this is a purely local action, independent of
+// whatever the cloud side still thinks, matching how
+// internal/cloudagent's own Reload always cuts a live connection
+// immediately rather than waiting for the cloud to agree.
 func (m *Manager) Disable(ctx context.Context) error {
 	m.mu.Lock()
 	backend := m.backend
@@ -184,12 +152,6 @@ func (m *Manager) Disable(ctx context.Context) error {
 
 	if err := backend.TeardownInterface(ctx); err != nil {
 		return fmt.Errorf("tearing down relay interface: %w", err)
-	}
-	if err := asteriskconf.SetValues(m.iax2ConfPath(), "general", map[string]string{"bindaddr": "0.0.0.0"}); err != nil {
-		return fmt.Errorf("resetting iax.conf bindaddr: %w", err)
-	}
-	if err := system.AsteriskReloadIax2(ctx, m.asteriskBin); err != nil {
-		return fmt.Errorf("reloading chan_iax2: %w", err)
 	}
 
 	m.mu.Lock()
