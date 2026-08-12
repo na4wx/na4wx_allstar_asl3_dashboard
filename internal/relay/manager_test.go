@@ -158,6 +158,19 @@ func TestPublicKeyForHelloReturnsFalseWhenDisabled(t *testing.T) {
 	}
 }
 
+// TestNewManagerResolvesEmptyAsteriskDirToDefault guards against a real
+// bug found on real hardware: an empty asteriskDir (the normal case --
+// server.New's own -asterisk-dir flag defaults to "") must resolve to
+// /etc/asterisk the same way internal/config.Store.dir() does, or
+// iax2ConfPath ends up building a bare relative "iax2.conf" instead.
+func TestNewManagerResolvesEmptyAsteriskDirToDefault(t *testing.T) {
+	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
+	m := NewManager(settings, "", fakeAsterisk(t))
+	if got := m.iax2ConfPath(); got != "/etc/asterisk/iax2.conf" {
+		t.Fatalf("iax2ConfPath() = %q, want %q", got, "/etc/asterisk/iax2.conf")
+	}
+}
+
 func TestPublicKeyForHelloReusesExistingKeypair(t *testing.T) {
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
 	if err := settings.Save(Settings{Enabled: true, PrivateKey: "priv", PublicKey: "pub"}); err != nil {

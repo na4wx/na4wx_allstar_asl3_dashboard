@@ -20,6 +20,19 @@ import (
 // time.
 const relayReconcileInterval = 5 * time.Minute
 
+// defaultAsteriskDir mirrors internal/config.Store's own "" means
+// /etc/asterisk convention (see that package's own defaultAsteriskDir)
+// -- server.New threads the same possibly-empty -asterisk-dir flag
+// value into both config.Store and this Manager, so this has to resolve
+// the empty case the exact same way config.Store.dir() does, or
+// iax2ConfPath ends up building a bare relative "iax2.conf" (resolved
+// against whatever directory the process happened to be started from,
+// not the real Asterisk config directory) on every normal deployment
+// that never sets -asterisk-dir at all -- confirmed the hard way as
+// "asteriskconf: stat iax2.conf: no such file or directory" on real
+// hardware.
+const defaultAsteriskDir = "/etc/asterisk"
+
 // Manager owns this node's relay tunnel state: applying a Grant handed
 // back by the cloud (bringing the WireGuard interface up, pointing
 // chan_iax2's bindaddr at the tunnel IP via iax2.conf, and reloading the
@@ -45,6 +58,9 @@ type Manager struct {
 // asteriskDir/asteriskBin are the same values already threaded through
 // server.New for every other Asterisk-config-touching feature.
 func NewManager(settings *SettingsStore, asteriskDir, asteriskBin string) *Manager {
+	if asteriskDir == "" {
+		asteriskDir = defaultAsteriskDir
+	}
 	return &Manager{
 		backend:     unavailableBackend{},
 		settings:    settings,
