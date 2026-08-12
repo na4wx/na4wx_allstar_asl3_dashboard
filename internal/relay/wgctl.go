@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,24 +38,29 @@ const (
 	policyFwMark       = "0x2a"
 	policyRulePriority = "100"
 
-	// wgTransportFwMark/wgTransportRulePriority prevent a routing loop:
-	// WireGuard's own outer encrypted packets, addressed to the peer's
-	// endpoint (the cloud's public IP, port 51820), are ordinary locally-
-	// generated UDP traffic from the kernel's point of view, with
-	// nothing inherently exempting them from policy routing. Without
-	// this, they can end up matching the very policy route meant for
-	// Asterisk's traffic and get sent back into relayIface -- which
-	// re-encrypts and re-sends them, forever. Confirmed the hard way on
-	// real hardware: hundreds of thousands of packets and over a
-	// gigabyte transferred in minutes, each one larger than the last
-	// (repeated re-encapsulation overhead), the unmistakable signature
-	// of exactly this loop. The fix (setting a distinct fwmark on the
-	// WireGuard interface itself, then routing anything carrying it via
-	// the main table before it ever reaches the general policy route)
-	// is WireGuard's own documented pattern for combining it with
-	// custom policy routing. The priority has to be lower than
-	// policyRulePriority so it's evaluated first.
-	wgTransportFwMark   = "0x51820"
+	// wgTransportPriority prevents a routing loop: WireGuard's own outer
+	// encrypted packets, addressed to the peer's endpoint (the cloud's
+	// public IP), are ordinary locally-generated UDP traffic from the
+	// kernel's point of view, with nothing inherently exempting them
+	// from policy routing. Without an explicit exemption, they can end
+	// up matching the very policy route meant for Asterisk's traffic and
+	// get sent back into relayIface -- which re-encrypts and re-sends
+	// them, forever. Confirmed the hard way on real hardware: hundreds
+	// of thousands of packets and over a gigabyte transferred in
+	// minutes, each one larger than the last (repeated re-encapsulation
+	// overhead), the unmistakable signature of exactly this loop.
+	//
+	// WireGuard's own documented fix for this (tagging the interface's
+	// outer traffic with a dedicated fwmark, then routing anything
+	// carrying it via the main table) did not reliably prevent the loop
+	// here despite being configured correctly (confirmed via `wg show`
+	// and `ip rule show`) -- rather than keep depending on exactly when
+	// and how that mark gets attached at the kernel level, applyPolicyRouting
+	// instead routes by *destination* (the cloud's own IP, extracted
+	// from the grant's own endpoint) via the main table -- unambiguous,
+	// and correct regardless of any WireGuard-internal marking behavior.
+	// The priority has to be lower than policyRulePriority so it's
+	// evaluated first.
 	wgTransportPriority = "50"
 )
 
@@ -134,12 +140,6 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 
 	if _, err := runCmd(ctx, "wg", "set", relayIface,
 		"private-key", keyPath,
-		// fwmark tags this interface's own outer, encrypted transport
-		// packets so applyPolicyRouting can route them via the main
-		// table instead of back into this same interface -- see
-		// wgTransportFwMark's own doc comment for why this is required,
-		// not optional, once any policy routing touches this interface.
-		"fwmark", wgTransportFwMark,
 		"peer", grant.CloudPublicKey,
 		"endpoint", grant.Endpoint,
 		"allowed-ips", "0.0.0.0/0",
@@ -154,7 +154,11 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 	if _, err := runCmd(ctx, "ip", "link", "set", relayIface, "up"); err != nil {
 		return fmt.Errorf("bringing up %s: %w", relayIface, err)
 	}
-	if err := applyPolicyRouting(ctx); err != nil {
+	cloudHost, _, err := net.SplitHostPort(grant.Endpoint)
+	if err != nil {
+		return fmt.Errorf("parsing cloud endpoint %q: %w", grant.Endpoint, err)
+	}
+	if err := applyPolicyRouting(ctx, cloudHost); err != nil {
 		return fmt.Errorf("routing asterisk's own traffic through %s: %w", relayIface, err)
 	}
 	return nil
@@ -223,15 +227,19 @@ var privateDestinationRanges = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0
 // Idempotent: deletes any matching rule left over from a previous run
 // first, same "safe to call again after a crash/restart" pattern as
 // internal/wifi's own captive-portal iptables rules.
-func applyPolicyRouting(ctx context.Context) error {
+func applyPolicyRouting(ctx context.Context, cloudHost string) error {
 	// Must be applied before the general policy route below is even
-	// useful -- see wgTransportFwMark's own doc comment for why this
-	// specific rule (checked first, at a lower priority number) is what
+	// useful -- see wgTransportPriority's own doc comment for why this
+	// specific rule (checked first, at a lower priority number, matched
+	// by destination rather than any WireGuard-internal marking) is what
 	// stops WireGuard's own transport traffic from looping back into
-	// itself via that route.
-	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", wgTransportFwMark, "table", "main")
-	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", wgTransportFwMark, "table", "main", "priority", wgTransportPriority); err != nil {
-		return fmt.Errorf("exempting wireguard's own transport traffic from policy routing: %w", err)
+	// itself via that route. Deleted by priority alone (not by its match
+	// criteria) so cleanup works even if cloudHost has changed since the
+	// rule was added -- e.g. across a reconnect that lands on a
+	// different relay slot.
+	_, _ = runCmd(ctx, "ip", "rule", "del", "priority", wgTransportPriority)
+	if _, err := runCmd(ctx, "ip", "rule", "add", "to", cloudHost, "table", "main", "priority", wgTransportPriority); err != nil {
+		return fmt.Errorf("exempting the cloud endpoint %s from policy routing: %w", cloudHost, err)
 	}
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN")
 	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN"); err != nil {
@@ -277,7 +285,7 @@ func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE")
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
-	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", wgTransportFwMark, "table", "main")
+	_, _ = runCmd(ctx, "ip", "rule", "del", "priority", wgTransportPriority)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 	for _, cidr := range privateDestinationRanges {
 		_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-d", cidr, "-j", "RETURN")
