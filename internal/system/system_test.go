@@ -211,6 +211,45 @@ func TestAsteriskReloadRptFallsBackToModuleReload(t *testing.T) {
 	}
 }
 
+func TestAsteriskReloadIax2TriesPlainFormFirst(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	bin := fakeAsterisk(t, logPath, "iax2 reload")
+	if err := AsteriskReloadIax2(context.Background(), bin); err != nil {
+		t.Fatalf("AsteriskReloadIax2() error = %v", err)
+	}
+	calls, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(calls)); got != "iax2 reload" {
+		t.Fatalf("calls = %q, want just \"iax2 reload\" (no fallback needed)", got)
+	}
+}
+
+func TestAsteriskReloadIax2FallsBackToModuleReload(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	bin := fakeAsterisk(t, logPath, "module reload chan_iax2.so")
+	if err := AsteriskReloadIax2(context.Background(), bin); err != nil {
+		t.Fatalf("AsteriskReloadIax2() error = %v", err)
+	}
+	calls, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "iax2 reload\nmodule reload chan_iax2.so"
+	if got := strings.TrimSpace(string(calls)); got != want {
+		t.Fatalf("calls = %q, want %q (tried plain form, then fell back)", got, want)
+	}
+}
+
+func TestAsteriskReloadIax2ReturnsErrorWhenBothFail(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	bin := fakeAsterisk(t, logPath) // no okCmds -- everything fails
+	if err := AsteriskReloadIax2(context.Background(), bin); err == nil {
+		t.Fatal("AsteriskReloadIax2() error = nil, want an error when both forms fail")
+	}
+}
+
 func TestAsteriskReloadRptReturnsErrorWhenBothFail(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "calls.log")
 	bin := fakeAsterisk(t, logPath) // no okCmds -- everything fails

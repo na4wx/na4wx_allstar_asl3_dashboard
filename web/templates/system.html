@@ -211,6 +211,36 @@
     </div>
   </form>
 </div>
+
+<div class="card">
+  <div class="label-row">
+    <h2 style="margin:0">NAT-traversal relay</h2>
+    {{template "help" "Optional: if this node is behind NAT with no forwarded ports, other AllStarLink stations can't dial in directly. Enabling this tunnels this node's IAX2 traffic through the cloud service instead, so it registers with AllStarLink at a reachable address — no router configuration needed on your end. Requires Cloud Sync above to be configured and connected."}}
+  </div>
+  {{if not .RelayAvailable}}
+  <p class="hint">wireguard-tools isn't installed on this system — this feature isn't available until it is.</p>
+  {{else}}
+  {{if .RelayActive}}
+  <p class="hint">Active — externally reachable at {{.RelayExternalHost}}:{{.RelayExternalPort}} (tunnel address {{.RelayTunnelIP}}).</p>
+  {{else if .RelayEnabled}}
+  <p class="hint">Enabled — waiting for this node's next Cloud Sync connection to request a grant.</p>
+  {{end}}
+  <form method="post" action="/system/relay">
+    <div class="row">
+      <div class="field">
+        <label for="relay_enabled">Relay</label>
+        <select id="relay_enabled" name="relay_enabled">
+          <option value="true" {{if .RelayEnabled}}selected{{end}}>On</option>
+          <option value="false" {{if not .RelayEnabled}}selected{{end}}>Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">Save relay settings</button>
+    </div>
+  </form>
+  {{end}}
+</div>
 </div>
 
 <div data-tab-panel="account">

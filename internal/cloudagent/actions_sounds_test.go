@@ -42,7 +42,7 @@ func newSoundsTestAgent(t *testing.T) (*Agent, string) {
 	customDir := t.TempDir()
 	stockDir := t.TempDir()
 	soundsStore := sounds.New(customDir, stockDir, fakeSoxTool(t))
-	a := New(t.TempDir()+"/settings.json", "", nil, "asterisk", soundsStore, nil, nil, "", "", "", "")
+	a := New(t.TempDir()+"/settings.json", "", nil, "asterisk", soundsStore, nil, nil, "", "", "", "", nil)
 	return a, customDir
 }
 

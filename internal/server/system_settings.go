@@ -49,6 +49,14 @@ type systemPageData struct {
 	CloudAllowRemoteReboot  bool
 	CloudAllowRawConfigEdit bool
 	CloudLastConnected      string
+
+	// NAT-traversal relay -- see populateSystemRelay.
+	RelayAvailable    bool
+	RelayEnabled      bool
+	RelayActive       bool
+	RelayTunnelIP     string
+	RelayExternalHost string
+	RelayExternalPort int
 }
 
 func (s *Server) handleSystemPage(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +87,7 @@ func (s *Server) renderSystemPageWithNetworks(w http.ResponseWriter, r *http.Req
 		data.WiFiNetworks = networks
 	}
 	s.populateSystemCloud(&data)
+	s.populateSystemRelay(&data)
 
 	s.render(w, "system.html", data)
 }

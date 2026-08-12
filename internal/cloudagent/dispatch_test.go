@@ -41,6 +41,7 @@ func TestDispatchAuditsEveryCall(t *testing.T) {
 		"asterisk",
 		nil, nil, nil, "", "", "",
 		auditPath,
+		nil, // relayManager
 	)
 	if _, err := a.dispatch(context.Background(), "config.listNodes", nil); err != nil {
 		t.Fatalf("dispatch error = %v", err)

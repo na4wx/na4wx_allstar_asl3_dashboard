@@ -14,6 +14,7 @@ func TestActionSA818LastWithNoStatePath(t *testing.T) {
 		nil, nil, nil, "", "",
 		"", // sa818StatePath -- unconfigured
 		"",
+		nil, // relayManager
 	)
 	result, err := a.dispatch(context.Background(), "sa818.last", nil)
 	if err != nil {

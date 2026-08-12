@@ -51,6 +51,7 @@ func newTestAgent(t *testing.T, settingsPath string, store *config.Store, asteri
 		"", // skywarnDir -- not installed in these tests
 		"", // sa818Port -- auto-detect, not exercised in these tests
 		filepath.Join(t.TempDir(), "sa818-last.json"),
-		"", // auditLogPath -- audit logging disabled in these tests
+		"",  // auditLogPath -- audit logging disabled in these tests
+		nil, // relayManager -- relay not exercised in these tests
 	)
 }

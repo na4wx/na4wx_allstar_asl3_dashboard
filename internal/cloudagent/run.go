@@ -49,6 +49,7 @@ import (
 	"github.com/coder/websocket"
 
 	"hamvoipconfiggui-asl3/internal/config"
+	"hamvoipconfiggui-asl3/internal/relay"
 	"hamvoipconfiggui-asl3/internal/sounds"
 	"hamvoipconfiggui-asl3/internal/soundschedule"
 	"hamvoipconfiggui-asl3/internal/wxtone"
@@ -101,6 +102,7 @@ type Agent struct {
 	sa818Port      string
 	sa818StatePath string
 	audit          *auditWriter
+	relayManager   *relay.Manager
 
 	mu            sync.Mutex
 	reload        chan struct{}
@@ -144,6 +146,7 @@ func New(
 	sa818Port string,
 	sa818StatePath string,
 	auditLogPath string,
+	relayManager *relay.Manager,
 ) *Agent {
 	return &Agent{
 		settings:       NewSettingsStore(settingsPath),
@@ -159,6 +162,7 @@ func New(
 		sa818StatePath: sa818StatePath,
 		audit:          newAuditWriter(auditLogPath),
 		reload:         make(chan struct{}),
+		relayManager:   relayManager,
 	}
 }
 

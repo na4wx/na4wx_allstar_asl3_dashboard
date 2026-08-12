@@ -35,6 +35,18 @@ type envelope struct {
 	// this process).
 	Nodes []string `json:"nodes,omitempty"`
 
+	// RelayPublicKey (hello, node -> cloud): this device's WireGuard
+	// public key, sent only when the NAT-traversal relay (see
+	// internal/relay's package doc) is enabled locally and has a
+	// keypair generated. Its presence is what triggers the cloud's own
+	// relay provisioning for this hello.
+	RelayPublicKey string `json:"relayPublicKey,omitempty"`
+
+	// Relay (helloAck, cloud -> node): the WireGuard relay grant,
+	// present only when RelayPublicKey was sent and the cloud actually
+	// provisioned it. See relayGrant's own doc comment.
+	Relay *relayGrant `json:"relay,omitempty"`
+
 	// helloAck (cloud -> node): the cloud's reply to hello. This isn't
 	// in the plan's original wire sketch but is needed to implement its
 	// "reset backoff only on a successful hello handshake, not bare TCP
@@ -70,6 +82,19 @@ type envelope struct {
 	// live status stream. Not used until Phase 3's on-demand live
 	// watch; the field is defined now so the wire type is stable.
 	Node string `json:"node,omitempty"`
+}
+
+// relayGrant is the WireGuard NAT-traversal relay allocation the cloud
+// hands back on helloAck once it has provisioned this device -- see
+// internal/relay's package doc for what happens with it. Field names
+// match services/relayProvision.ts's own RelayGrant on the cloud side.
+type relayGrant struct {
+	CloudPublicKey string `json:"cloudPublicKey"`
+	Endpoint       string `json:"endpoint"`
+	TunnelIP       string `json:"tunnelIp"`
+	TunnelCIDR     string `json:"tunnelCidr"`
+	ExternalHost   string `json:"externalHost"`
+	ExternalPort   int    `json:"externalPort"`
 }
 
 // Envelope type discriminators — see envelope's field-group comments

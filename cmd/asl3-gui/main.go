@@ -44,6 +44,7 @@ func main() {
 	cloudAuditLog := flag.String("cloud-audit-log", "/var/log/asl3-gui/cloud-actions.log", "path to record every action the cloud connection relays to this device, independent of the cloud site's own records")
 	wifiHotspotSSID := flag.String("wifi-hotspot-ssid", "ASL3 Dashboard", "SSID this node broadcasts as a fallback WiFi hotspot on wlan0 the moment it has no active network connection")
 	wifiHotspotEnabled := flag.Bool("wifi-hotspot-enabled", true, "automatically stand up the fallback WiFi hotspot on wlan0 when this node has no active network connection")
+	relaySettingsPath := flag.String("relay-settings-file", "/etc/asl3-gui/relay.json", "path to store this node's WireGuard NAT-traversal relay settings (see internal/relay's package doc) -- off until the operator opts in on the System page's Cloud Sync tab")
 	flag.Parse()
 
 	if err := wifi.ValidateSSID(*wifiHotspotSSID); err != nil {
@@ -74,12 +75,13 @@ func main() {
 		log.Printf("no admin account configured yet; visit http://<this-host>%s/setup to create one", *addr)
 	}
 
-	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *wxTonesPath, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, wifiDashboardPort, *wifiHotspotEnabled)
+	srv, err := server.New(authMgr, templatesFS, staticFS, *asteriskDir, *asteriskBin, *sa818Port, *sa818StatePath, *soundsCustomDir, *soundsStockDir, *soxTool, *ttsTool, *ttsVoicesDir, *soundSchedulePath, *skywarnDir, *wxTonesPath, *nodeDBPath, *nodeDBURL, *cloudSettingsPath, *cloudURL, *cloudAuditLog, *wifiHotspotSSID, wifiDashboardPort, *relaySettingsPath, *wifiHotspotEnabled)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
 
 	srv.StartWiFiWatchdog(context.Background())
+	srv.StartRelayManager(context.Background())
 	srv.StartCloudAgent(context.Background())
 	srv.StartSoundSchedulePoller(context.Background())
 	srv.StartWXTonePoller(context.Background())

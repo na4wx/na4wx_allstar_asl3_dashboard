@@ -25,6 +25,7 @@ import (
 	"hamvoipconfiggui-asl3/internal/cloudagent"
 	"hamvoipconfiggui-asl3/internal/config"
 	"hamvoipconfiggui-asl3/internal/nodedb"
+	"hamvoipconfiggui-asl3/internal/relay"
 	"hamvoipconfiggui-asl3/internal/sa818"
 	"hamvoipconfiggui-asl3/internal/skywarnplus"
 	"hamvoipconfiggui-asl3/internal/sounds"
@@ -92,6 +93,14 @@ type Server struct {
 	// cloud address itself is never operator-editable.
 	cloudAgent      *cloudagent.Agent
 	cloudURLDefault string
+
+	// relayManager owns the WireGuard NAT-traversal relay's local state
+	// (see internal/relay's package doc) -- always non-nil (constructed
+	// in New); StartRelayManager swaps in the real detected backend and
+	// starts its reconcile goroutine, same split as wifiManager above
+	// and for the same reason (tests can construct a Server without
+	// shelling out to `wg`/`ip`).
+	relayManager *relay.Manager
 
 	// nodes is the local copy of AllStarLink's node directory (node
 	// number -> callsign/description/location), used only to show
@@ -163,11 +172,12 @@ func (s *Server) StartCloudAgent(ctx context.Context) {
 // hotspot -- see internal/wifi's package doc. The hotspot itself is
 // always broadcast open (no password option) -- see
 // wifi.NewManager's own doc comment for why.
-func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, wxTonesPath, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiDashboardPort string, wifiHotspotEnabled bool) (*Server, error) {
+func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteriskBin, sa818Port, sa818StatePath, soundsCustomDir, soundsStockDir, soxTool, ttsTool, ttsVoicesDir, soundSchedulePath, skywarnDir, wxTonesPath, nodeDBPath, nodeDBURL, cloudSettingsPath, cloudURLDefault, cloudAuditLogPath, wifiHotspotSSID, wifiDashboardPort, relaySettingsPath string, wifiHotspotEnabled bool) (*Server, error) {
 	cfg := &config.Store{Dir: asteriskDir}
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
 	wxTonesStore := wxtone.New(wxTonesPath)
+	relayManager := relay.NewManager(relay.NewSettingsStore(relaySettingsPath), asteriskDir, asteriskBin)
 
 	s := &Server{
 		auth:           authMgr,
@@ -185,10 +195,11 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 		nodes:          nodedb.New(nodeDBPath, nodeDBURL),
 		history:        newLinkHistory(),
 		wifiManager:    wifi.NewManager(wifiHotspotSSID, wifiDashboardPort, wifiHotspotEnabled),
+		relayManager:   relayManager,
 		cloudAgent: cloudagent.New(
 			cloudSettingsPath, cloudURLDefault, cfg, asteriskBin,
 			soundsStore, soundScheduleStore, wxTonesStore, skywarnDir,
-			sa818Port, sa818StatePath, cloudAuditLogPath,
+			sa818Port, sa818StatePath, cloudAuditLogPath, relayManager,
 		),
 		cloudURLDefault: cloudURLDefault,
 		aslStatsBaseURL: allstarapi.DefaultBaseURL,
@@ -215,6 +226,17 @@ func (s *Server) StartWiFiWatchdog(ctx context.Context) {
 	log.Printf("wifi: detected backend %q for the hotspot-fallback watchdog", backend.Name())
 	s.wifiManager.SetBackend(backend)
 	go s.wifiManager.Run(ctx)
+}
+
+// StartRelayManager detects whether wireguard-tools is installed (see
+// relay.DetectBackend) and starts the relay's reconcile goroutine. Not
+// called from New so tests can construct a Server without shelling out
+// to `wg`/`ip` at all, same split as StartWiFiWatchdog above.
+func (s *Server) StartRelayManager(ctx context.Context) {
+	backend := relay.DetectBackend(ctx)
+	log.Printf("relay: detected backend %q for the NAT-traversal relay", backend.Name())
+	s.relayManager.SetBackend(backend)
+	go s.relayManager.Run(ctx)
 }
 
 // parseTemplates parses every page template up front, same set as the
@@ -311,6 +333,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("POST /system/wifi/scan", s.requireAuth(s.handleSystemWiFiScan))
 	s.mux.HandleFunc("POST /system/wifi/connect", s.requireAuth(s.handleSystemWiFiConnect))
 	s.mux.HandleFunc("POST /system/cloud", s.requireAuth(s.handleSystemCloudSave))
+	s.mux.HandleFunc("POST /system/relay", s.requireAuth(s.handleSystemRelaySave))
 	s.mux.HandleFunc("GET /system/update/check", s.requireAuth(s.handleUpdateCheck))
 	s.mux.HandleFunc("GET /system/update/run", s.requireAuth(s.handleUpdateStream))
 }

@@ -17,6 +17,7 @@ func newWXToneTestAgent(t *testing.T) *Agent {
 		nil, nil,
 		wxtone.New(filepath.Join(t.TempDir(), "wx-tones.json")),
 		"", "", "", "",
+		nil, // relayManager
 	)
 	return a
 }

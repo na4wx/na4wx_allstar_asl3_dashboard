@@ -394,6 +394,22 @@ else
 	warn "NetworkManager isn't active on this system — the WiFi fallback hotspot (internal/wifi.DetectBackend) won't be available until it is. If this node uses a different network stack (systemd-networkd, ifupdown, ...), switch it to NetworkManager to get this feature; ASL3 has no other supported backend."
 fi
 
+# --- NAT-traversal relay (optional, off by default) -------------------------
+#
+# Backs internal/relay's WireGuard tunnel to the cloud service, letting
+# this node accept inbound AllStarLink IAX2 connections even behind NAT
+# with no forwarded ports (see that package's own doc comment). Only
+# wireguard-tools is needed here — the wireguard kernel module itself
+# has shipped in-tree since Linux 5.6, so unlike DAHDI above there is no
+# dkms build step required for this feature.
+
+log "Checking wireguard-tools (NAT-traversal relay)"
+if command -v wg >/dev/null 2>&1; then
+	log "wireguard-tools already installed"
+else
+	apt_install wireguard-tools || warn "couldn't install wireguard-tools — the NAT-traversal relay (System page, Cloud Sync tab) won't be available until it's installed manually"
+fi
+
 # --- SkywarnPlus (optional weather-alert automation) ------------------------
 #
 # A third-party, no-longer-maintained tool

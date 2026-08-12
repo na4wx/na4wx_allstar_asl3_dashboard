@@ -7,6 +7,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+
+	"hamvoipconfiggui-asl3/internal/relay"
 )
 
 // runOnce dials settings.CloudURL, performs the hello/helloAck
@@ -42,8 +44,21 @@ func (a *Agent) runOnce(ctx context.Context, settings Settings) (helloSucceeded 
 		logf("list nodes: %v", err)
 	}
 
+	// Best-effort, same as the node-list fetch above: relay is an
+	// optional, off-by-default add-on, so a failure here (e.g.
+	// wireguard-tools missing) must never block the hello handshake
+	// itself -- it just means this hello doesn't request a relay grant.
+	var relayPublicKey string
+	if a.relayManager != nil {
+		if key, ok, err := a.relayManager.PublicKeyForHello(ctx); err != nil {
+			logf("relay: generating keypair: %v", err)
+		} else if ok {
+			relayPublicKey = key
+		}
+	}
+
 	helloCtx, cancel := context.WithTimeout(ctx, helloTimeout)
-	err = wsjson.Write(helloCtx, conn, envelope{Type: typeHello, APIKey: settings.APIKey, App: appName, Nodes: nodes})
+	err = wsjson.Write(helloCtx, conn, envelope{Type: typeHello, APIKey: settings.APIKey, App: appName, Nodes: nodes, RelayPublicKey: relayPublicKey})
 	cancel()
 	if err != nil {
 		logf("send hello: %v", err)
@@ -67,6 +82,24 @@ func (a *Agent) runOnce(ctx context.Context, settings Settings) (helloSucceeded 
 	a.lastConnected = time.Now()
 	a.ownerSubscriptionActive = ack.OwnerSubscriptionActive
 	a.mu.Unlock()
+
+	// Same best-effort reasoning as generating the key above -- applying
+	// the tunnel is independent of the connection staying open (the
+	// tunnel itself doesn't ride this WebSocket at all), so a failure
+	// here logs and moves on rather than tearing the connection down.
+	if a.relayManager != nil && ack.Relay != nil {
+		grant := relay.Grant{
+			CloudPublicKey: ack.Relay.CloudPublicKey,
+			Endpoint:       ack.Relay.Endpoint,
+			TunnelIP:       ack.Relay.TunnelIP,
+			TunnelCIDR:     ack.Relay.TunnelCIDR,
+			ExternalHost:   ack.Relay.ExternalHost,
+			ExternalPort:   ack.Relay.ExternalPort,
+		}
+		if err := a.relayManager.ApplyGrant(ctx, grant); err != nil {
+			logf("relay: applying grant: %v", err)
+		}
+	}
 
 	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
 	defer stopHeartbeat()

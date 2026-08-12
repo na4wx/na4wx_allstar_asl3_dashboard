@@ -41,7 +41,8 @@ func newSoundScheduleTestAgent(t *testing.T) (*Agent, string) {
 		"",  // skywarnDir
 		"",  // sa818Port
 		filepath.Join(t.TempDir(), "sa818-last.json"),
-		"", // auditLogPath
+		"",  // auditLogPath
+		nil, // relayManager
 	)
 	return a, files[0].Ref
 }
