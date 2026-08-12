@@ -87,6 +87,9 @@ func (a *Agent) runOnce(ctx context.Context, settings Settings) (helloSucceeded 
 	// the tunnel is independent of the connection staying open (the
 	// tunnel itself doesn't ride this WebSocket at all), so a failure
 	// here logs and moves on rather than tearing the connection down.
+	if relayPublicKey != "" {
+		logf("relay: sent public key in hello, ack.Relay present = %v", ack.Relay != nil)
+	}
 	if a.relayManager != nil && ack.Relay != nil {
 		grant := relay.Grant{
 			CloudPublicKey: ack.Relay.CloudPublicKey,
@@ -96,8 +99,11 @@ func (a *Agent) runOnce(ctx context.Context, settings Settings) (helloSucceeded 
 			ExternalHost:   ack.Relay.ExternalHost,
 			ExternalPort:   ack.Relay.ExternalPort,
 		}
+		logf("relay: applying grant, endpoint=%s tunnelIP=%s", grant.Endpoint, grant.TunnelIP)
 		if err := a.relayManager.ApplyGrant(ctx, grant); err != nil {
 			logf("relay: applying grant: %v", err)
+		} else {
+			logf("relay: grant applied successfully")
 		}
 	}
 
