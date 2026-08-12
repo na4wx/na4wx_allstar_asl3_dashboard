@@ -19,6 +19,25 @@ const relayIface = "wg-relay"
 
 const cmdTimeout = 10 * time.Second
 
+// Policy-routing constants for routing Asterisk's own outbound traffic
+// through the tunnel -- see applyPolicyRouting's own doc comment for
+// why this exists at all (chan_iax2's bindaddr, set elsewhere in this
+// package, only covers IAX2 itself; ASL3's own HTTP-based node
+// registration is a separate code path with no bindaddr equivalent).
+// policyRouteTable/policyFwMark are arbitrary but need to not collide
+// with anything else already using custom routing tables/marks on this
+// host -- 200/0x2a were picked as values unlikely to already be in use,
+// not because they mean anything. policyRulePriority has to be lower
+// than the kernel's own default main-table rule (32766) or it would
+// never actually be consulted, since the main table's own default
+// route would already have answered the lookup first.
+const (
+	asteriskUser       = "asterisk"
+	policyRouteTable   = "200"
+	policyFwMark       = "0x2a"
+	policyRulePriority = "100"
+)
+
 // DetectBackend probes the running system once and returns the Backend
 // to use for every subsequent relay operation. Never returns nil — falls
 // back to unavailableBackend{} so callers never need a nil check, same
@@ -109,13 +128,22 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 	if _, err := runCmd(ctx, "ip", "link", "set", relayIface, "up"); err != nil {
 		return fmt.Errorf("bringing up %s: %w", relayIface, err)
 	}
+	if err := applyPolicyRouting(ctx); err != nil {
+		return fmt.Errorf("routing asterisk's own traffic through %s: %w", relayIface, err)
+	}
 	return nil
 }
 
-// TeardownInterface removes relayIface entirely. Tolerant of it already
-// being gone (disable-then-disable, or a fresh node that was never
-// enabled).
+// TeardownInterface removes relayIface entirely, and the policy-routing
+// rules from applyPolicyRouting alongside it (best-effort, tolerant of
+// them already being gone -- same "disable-then-disable is a no-op"
+// contract as the interface removal itself). The rules are removed
+// regardless of whether the interface still exists, since they aren't
+// tied to it existing and would otherwise linger, silently blackholing
+// the asterisk user's traffic (routed at a table that no longer has a
+// working default route) even after the tunnel itself is gone.
 func (wgBackend) TeardownInterface(ctx context.Context) error {
+	removePolicyRouting(ctx)
 	if !interfaceExists(ctx, relayIface) {
 		return nil
 	}
@@ -123,6 +151,42 @@ func (wgBackend) TeardownInterface(ctx context.Context) error {
 		return fmt.Errorf("removing %s: %w", relayIface, err)
 	}
 	return nil
+}
+
+// applyPolicyRouting routes the asterisk user's own outbound traffic
+// through relayIface -- needed because chan_iax2's bindaddr (set
+// elsewhere in this package, via iax2.conf) only covers chan_iax2
+// itself, while ASL3's node registration is a separate HTTP-based
+// mechanism (res_rpt_http_registrations.so) with no per-application
+// bindaddr option of its own; confirmed directly against that module's
+// source (AllStarLink/app_rpt) that it never sets libcurl's
+// CURLOPT_INTERFACE, so it always uses whatever the OS's normal routing
+// table would pick. Marking by uid (rather than by destination IP)
+// covers this without needing to track register.allstarlink.org's own,
+// possibly-changing, resolved address -- and naturally covers any other
+// network traffic Asterisk itself originates too. Idempotent: deletes
+// any matching rule left over from a previous run first, same "safe to
+// call again after a crash/restart" pattern as internal/wifi's own
+// captive-portal iptables rules.
+func applyPolicyRouting(ctx context.Context) error {
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark); err != nil {
+		return fmt.Errorf("marking asterisk's outbound traffic: %w", err)
+	}
+	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
+	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", policyFwMark, "table", policyRouteTable, "priority", policyRulePriority); err != nil {
+		return fmt.Errorf("adding policy routing rule: %w", err)
+	}
+	if _, err := runCmd(ctx, "ip", "route", "replace", "default", "dev", relayIface, "table", policyRouteTable); err != nil {
+		return fmt.Errorf("adding policy route: %w", err)
+	}
+	return nil
+}
+
+func removePolicyRouting(ctx context.Context) {
+	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
+	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 }
 
 // GenerateKeypair returns a fresh WireGuard private/public keypair via

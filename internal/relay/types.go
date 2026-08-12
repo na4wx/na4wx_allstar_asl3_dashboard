@@ -2,11 +2,23 @@
 // connections even behind NAT with no forwarded ports, by tunneling
 // through the cloud service over WireGuard. AllStarLink's own directory
 // resolves "where is node N" purely from the observed source address of
-// this node's own periodic IAX2 registration packet, so the fix is to
-// make that traffic (and every other IAX2 packet) egress through the
-// tunnel instead of this node's real, unreachable address — see
-// Manager's own doc comment for how that's actually wired up
-// (chan_iax2's bindaddr, in iax2.conf).
+// the request that registered it, so the fix is to make that traffic
+// egress through the tunnel instead of this node's real, unreachable
+// address. Two separate mechanisms handle two separate registration
+// paths on ASL3, both wired up here:
+//   - chan_iax2 itself: bindaddr in iax2.conf, see Manager's own doc
+//     comment.
+//   - ASL3's own HTTP-based node registration (res_rpt_http_registrations.so,
+//     configured via rpt_http_registrations.conf) — a completely
+//     separate code path with no bindaddr equivalent of its own
+//     (confirmed directly against that module's source: it never sets
+//     libcurl's CURLOPT_INTERFACE), so it's routed through the tunnel
+//     instead via OS-level policy routing keyed to the asterisk user —
+//     see wgctl.go's applyPolicyRouting. Missing this piece entirely
+//     is why an early version of this feature could bring the tunnel
+//     up and pass IAX2 call traffic through it just fine, while
+//     `iax2 show registry` kept showing 0 registrations and the node
+//     stayed unreachable by number from anywhere else on the network.
 //
 // Provisioning rides the existing cloudagent hello/helloAck handshake
 // (see internal/cloudagent/protocol.go's RelayPublicKey/Relay fields)
