@@ -46,21 +46,21 @@ func fakeAsterisk(t *testing.T) string {
 	return path
 }
 
-// writeMinimalIax2Conf creates a real-shaped iax2.conf in dir --
+// writeMinimalIaxConf creates a real-shaped iax.conf in dir --
 // asteriskconf.SetValues (like the real Asterisk config file it edits)
 // only ever edits an existing file, never creates one from scratch,
-// same as every real deployment where Asterisk itself ships iax2.conf.
-func writeMinimalIax2Conf(t *testing.T, dir string) {
+// same as every real deployment where Asterisk itself ships iax.conf.
+func writeMinimalIaxConf(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "iax2.conf"), []byte("[general]\n"), 0644); err != nil {
-		t.Fatalf("write iax2.conf fixture: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, "iax.conf"), []byte("[general]\n"), 0644); err != nil {
+		t.Fatalf("write iax.conf fixture: %v", err)
 	}
 }
 
 func newTestManager(t *testing.T) (*Manager, *fakeBackend) {
 	t.Helper()
 	asteriskDir := t.TempDir()
-	writeMinimalIax2Conf(t, asteriskDir)
+	writeMinimalIaxConf(t, asteriskDir)
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
 	if err := settings.Save(Settings{Enabled: true, PrivateKey: "priv", PublicKey: "pub"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -96,13 +96,13 @@ func TestApplyGrantAppliesTunnelAndWritesBindaddr(t *testing.T) {
 		t.Fatalf("Status() grant = %+v, want %+v", gotGrant, grant)
 	}
 
-	iax2 := filepath.Join(m.asteriskDir, "iax2.conf")
+	iax2 := filepath.Join(m.asteriskDir, "iax.conf")
 	data, err := os.ReadFile(iax2)
 	if err != nil {
-		t.Fatalf("reading iax2.conf: %v", err)
+		t.Fatalf("reading iax.conf: %v", err)
 	}
 	if got := string(data); !strings.Contains(got, "bindaddr") || !strings.Contains(got, "10.90.0.2") {
-		t.Fatalf("iax2.conf = %q, want it to set bindaddr to the tunnel IP", got)
+		t.Fatalf("iax.conf = %q, want it to set bindaddr to the tunnel IP", got)
 	}
 }
 
@@ -162,12 +162,12 @@ func TestPublicKeyForHelloReturnsFalseWhenDisabled(t *testing.T) {
 // bug found on real hardware: an empty asteriskDir (the normal case --
 // server.New's own -asterisk-dir flag defaults to "") must resolve to
 // /etc/asterisk the same way internal/config.Store.dir() does, or
-// iax2ConfPath ends up building a bare relative "iax2.conf" instead.
+// iax2ConfPath ends up building a bare relative "iax.conf" instead.
 func TestNewManagerResolvesEmptyAsteriskDirToDefault(t *testing.T) {
 	settings := NewSettingsStore(filepath.Join(t.TempDir(), "relay.json"))
 	m := NewManager(settings, "", fakeAsterisk(t))
-	if got := m.iax2ConfPath(); got != "/etc/asterisk/iax2.conf" {
-		t.Fatalf("iax2ConfPath() = %q, want %q", got, "/etc/asterisk/iax2.conf")
+	if got := m.iax2ConfPath(); got != "/etc/asterisk/iax.conf" {
+		t.Fatalf("iax2ConfPath() = %q, want %q", got, "/etc/asterisk/iax.conf")
 	}
 }
 

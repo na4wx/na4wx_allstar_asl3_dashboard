@@ -80,7 +80,7 @@ func AsteriskReloadRpt(ctx context.Context, bin string) error {
 	return err
 }
 
-// AsteriskReloadIax2 live-reloads chan_iax2's own config (iax2.conf) —
+// AsteriskReloadIax2 live-reloads chan_iax2's own config (iax.conf) —
 // used after internal/relay writes a new bindaddr so the module picks up
 // the tunnel interface without a full Asterisk restart, same "reload,
 // don't restart" reasoning as AsteriskReloadRpt above. Tries the plain

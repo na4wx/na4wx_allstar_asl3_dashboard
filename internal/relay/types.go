@@ -6,7 +6,7 @@
 // egress through the tunnel instead of this node's real, unreachable
 // address. Two separate mechanisms handle two separate registration
 // paths on ASL3, both wired up here:
-//   - chan_iax2 itself: bindaddr in iax2.conf, see Manager's own doc
+//   - chan_iax2 itself: bindaddr in iax.conf, see Manager's own doc
 //     comment.
 //   - ASL3's own HTTP-based node registration (res_rpt_http_registrations.so,
 //     configured via rpt_http_registrations.conf) — a completely

@@ -155,7 +155,7 @@ func (wgBackend) TeardownInterface(ctx context.Context) error {
 
 // applyPolicyRouting routes the asterisk user's own outbound traffic
 // through relayIface -- needed because chan_iax2's bindaddr (set
-// elsewhere in this package, via iax2.conf) only covers chan_iax2
+// elsewhere in this package, via iax.conf) only covers chan_iax2
 // itself, while ASL3's node registration is a separate HTTP-based
 // mechanism (res_rpt_http_registrations.so) with no per-application
 // bindaddr option of its own; confirmed directly against that module's

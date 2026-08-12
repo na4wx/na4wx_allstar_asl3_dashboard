@@ -25,17 +25,17 @@ const relayReconcileInterval = 5 * time.Minute
 // -- server.New threads the same possibly-empty -asterisk-dir flag
 // value into both config.Store and this Manager, so this has to resolve
 // the empty case the exact same way config.Store.dir() does, or
-// iax2ConfPath ends up building a bare relative "iax2.conf" (resolved
+// iax2ConfPath ends up building a bare relative "iax.conf" (resolved
 // against whatever directory the process happened to be started from,
 // not the real Asterisk config directory) on every normal deployment
 // that never sets -asterisk-dir at all -- confirmed the hard way as
-// "asteriskconf: stat iax2.conf: no such file or directory" on real
+// "asteriskconf: stat iax.conf: no such file or directory" on real
 // hardware.
 const defaultAsteriskDir = "/etc/asterisk"
 
 // Manager owns this node's relay tunnel state: applying a Grant handed
 // back by the cloud (bringing the WireGuard interface up, pointing
-// chan_iax2's bindaddr at the tunnel IP via iax2.conf, and reloading the
+// chan_iax2's bindaddr at the tunnel IP via iax.conf, and reloading the
 // module so it takes effect), and reversing all of that when the
 // operator disables the feature locally. Bringing chan_iax2's own
 // registration and connection traffic through the tunnel is what
@@ -125,7 +125,7 @@ func (m *Manager) PublicKeyForHello(ctx context.Context) (string, bool, error) {
 }
 
 func (m *Manager) iax2ConfPath() string {
-	return filepath.Join(m.asteriskDir, "iax2.conf")
+	return filepath.Join(m.asteriskDir, "iax.conf")
 }
 
 // ApplyGrant brings the relay tunnel up (or updates it in place) using
@@ -150,7 +150,7 @@ func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 		return fmt.Errorf("applying wireguard tunnel: %w", err)
 	}
 	if err := asteriskconf.SetValues(m.iax2ConfPath(), "general", map[string]string{"bindaddr": grant.TunnelIP}); err != nil {
-		return fmt.Errorf("writing iax2.conf bindaddr: %w", err)
+		return fmt.Errorf("writing iax.conf bindaddr: %w", err)
 	}
 	if err := system.AsteriskReloadIax2(ctx, m.asteriskBin); err != nil {
 		return fmt.Errorf("reloading chan_iax2: %w", err)
@@ -186,7 +186,7 @@ func (m *Manager) Disable(ctx context.Context) error {
 		return fmt.Errorf("tearing down relay interface: %w", err)
 	}
 	if err := asteriskconf.SetValues(m.iax2ConfPath(), "general", map[string]string{"bindaddr": "0.0.0.0"}); err != nil {
-		return fmt.Errorf("resetting iax2.conf bindaddr: %w", err)
+		return fmt.Errorf("resetting iax.conf bindaddr: %w", err)
 	}
 	if err := system.AsteriskReloadIax2(ctx, m.asteriskBin); err != nil {
 		return fmt.Errorf("reloading chan_iax2: %w", err)
