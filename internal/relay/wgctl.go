@@ -160,9 +160,22 @@ func (wgBackend) TeardownInterface(ctx context.Context) error {
 // registration).
 const iax2Port = "4569"
 
+// privateDestinationRanges are loopback + every RFC1918 block --
+// exempted from policy routing (see applyPolicyRouting) for the same
+// reason iax2Port is: anything Asterisk sends to itself or the LAN
+// (its own DNS resolver, most notably -- confirmed the hard way on real
+// hardware as a "Resolving timed out" curl failure once policy routing
+// swept up a DNS query bound for a private LAN resolver address) has no
+// business going through the tunnel to the cloud, which has no route
+// back into a private network it was never part of. Only genuinely
+// public-internet-bound traffic (the registration request itself)
+// should ever take the tunnel.
+var privateDestinationRanges = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+
 // applyPolicyRouting routes the asterisk user's own outbound traffic
-// through relayIface, *except* its own IAX2 traffic -- needed because
-// ASL3's node registration is a separate HTTP-based mechanism
+// through relayIface, *except* its own IAX2 traffic and anything bound
+// for a private/local destination -- needed because ASL3's node
+// registration is a separate HTTP-based mechanism
 // (res_rpt_http_registrations.so) with no per-application bindaddr
 // option of its own; confirmed directly against that module's source
 // (AllStarLink/app_rpt) that it never sets libcurl's CURLOPT_INTERFACE,
@@ -171,15 +184,15 @@ const iax2Port = "4569"
 // needing to track register.allstarlink.org's own, possibly-changing,
 // resolved address.
 //
-// The IAX2 exemption is load-bearing, not an optimization: confirmed
-// the hard way on real hardware that marking *all* of the asterisk
-// user's traffic (an earlier version of this function) broke ordinary
-// outbound calls to other nodes -- chan_iax2 itself runs as the same
-// asterisk user, so its own already-working direct-dial traffic got
-// swept into the tunnel right along with the registration traffic this
-// was actually meant to fix. The exemption rule (`-j RETURN`) has to
-// come before the general MARK rule in the OUTPUT chain, since iptables
-// evaluates rules in order and the first match wins.
+// Both exemptions are load-bearing, not optimizations: confirmed the
+// hard way on real hardware that marking *all* of the asterisk user's
+// traffic (an earlier version of this function) broke both ordinary
+// outbound calls to other nodes (chan_iax2 itself runs as the same
+// asterisk user) and DNS resolution (queries to a private LAN resolver
+// got routed into a network the cloud has no path back into). Exemption
+// rules (`-j RETURN`) have to come before the general MARK rule in the
+// OUTPUT chain, since iptables evaluates rules in order and the first
+// match wins.
 //
 // Idempotent: deletes any matching rule left over from a previous run
 // first, same "safe to call again after a crash/restart" pattern as
@@ -188,6 +201,12 @@ func applyPolicyRouting(ctx context.Context) error {
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN")
 	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN"); err != nil {
 		return fmt.Errorf("exempting IAX2 traffic from policy routing: %w", err)
+	}
+	for _, cidr := range privateDestinationRanges {
+		_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-d", cidr, "-j", "RETURN")
+		if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "-d", cidr, "-j", "RETURN"); err != nil {
+			return fmt.Errorf("exempting %s from policy routing: %w", cidr, err)
+		}
 	}
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark); err != nil {
@@ -207,6 +226,9 @@ func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
+	for _, cidr := range privateDestinationRanges {
+		_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-d", cidr, "-j", "RETURN")
+	}
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", iax2Port, "-j", "RETURN")
 }
 
