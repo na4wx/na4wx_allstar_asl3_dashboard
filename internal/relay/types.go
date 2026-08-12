@@ -12,18 +12,20 @@
 // "bind to this interface" option of its own (confirmed directly
 // against that module's source, AllStarLink/app_rpt: it never sets
 // libcurl's CURLOPT_INTERFACE, so it always uses whatever the OS's
-// normal routing table would pick). This package routes that traffic
-// through the tunnel via OS-level policy routing keyed to the asterisk
-// user, explicitly excluding chan_iax2's own well-known port -- see
-// wgctl.go's applyPolicyRouting for exactly what that covers and why
-// the exclusion is load-bearing, not an optimization (an earlier
-// version without it broke ordinary outbound dialing to other nodes,
-// confirmed on real hardware: routing *all* of the asterisk user's
-// traffic, including chan_iax2's own already-working direct-dial
-// traffic, through the tunnel is not what this feature is for).
-// chan_iax2 itself needs no configuration change at all -- listening on
-// its default 0.0.0.0 already receives and replies to inbound tunnel
-// traffic correctly on its own.
+// normal routing table would pick). This package routes only that
+// specific traffic (tcp/443 from the asterisk user) through the tunnel
+// via OS-level policy routing -- see wgctl.go's applyPolicyRouting for
+// exactly what that covers and why it's an *allowlist* (mark only
+// tcp/443) rather than marking everything from the asterisk user and
+// trying to carve out exemptions for what shouldn't go. The blocklist
+// shape was tried first and kept finding new gaps on real hardware:
+// ordinary IAX2 calls (chan_iax2 runs as the same asterisk user), DNS
+// resolution, and even after exempting both by name, a later real call
+// attempt still ended up marked and broken for reasons never fully
+// pinned down remotely. Marking only tcp/443 can't ever catch IAX2 or
+// DNS by construction. chan_iax2 itself needs no configuration change
+// at all -- listening on its default 0.0.0.0 already receives and
+// replies to inbound tunnel traffic correctly on its own.
 //
 // Provisioning rides the existing cloudagent hello/helloAck handshake
 // (see internal/cloudagent/protocol.go's RelayPublicKey/Relay fields)
