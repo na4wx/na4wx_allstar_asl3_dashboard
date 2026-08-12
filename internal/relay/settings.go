@@ -26,6 +26,15 @@ type Settings struct {
 	// to change if the key is ever suspected compromised.
 	PrivateKey string `json:"private_key"`
 	PublicKey  string `json:"public_key"`
+
+	// BindportOverridden/OriginalBindport track whether
+	// Iax2Configurer.ApplyBindport has pointed iax.conf's own bindport
+	// at the cloud-assigned external port, and if so, what it held
+	// before -- so RestoreBindport can put it back exactly (including
+	// "the key wasn't present at all", recorded as ""), rather than
+	// guessing a default, when relay is disabled.
+	BindportOverridden bool   `json:"bindport_overridden,omitempty"`
+	OriginalBindport   string `json:"original_bindport,omitempty"`
 }
 
 // SettingsStore persists Settings as a single JSON file, the same shape

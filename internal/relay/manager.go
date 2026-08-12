@@ -21,18 +21,23 @@ const relayReconcileInterval = 5 * time.Minute
 // Asterisk's non-IAX2 outbound traffic through it — see wgctl.go's
 // applyPolicyRouting for exactly what that covers and why), and
 // reversing all of that when the operator disables the feature
-// locally. Deliberately does NOT touch chan_iax2's own config at all
-// (an earlier version of this pointed iax.conf's bindaddr at the
-// tunnel IP — removed after confirming on real hardware that it broke
-// ordinary outbound dialing to other nodes: binding chan_iax2's own
-// socket to the tunnel's private IP couples ALL of its traffic, not
-// just registration, to the tunnel, with no way to selectively exempt
-// normal calls at that layer. chan_iax2 listening on its default
-// 0.0.0.0 already receives and replies to inbound tunnel traffic fine
-// on its own, so nothing there needed changing in the first place).
+// locally. Deliberately does NOT touch chan_iax2's own bindaddr (an
+// earlier version of this pointed iax.conf's bindaddr at the tunnel IP
+// — removed after confirming on real hardware that it broke ordinary
+// outbound dialing to other nodes: binding chan_iax2's own socket to
+// the tunnel's private IP couples ALL of its traffic, not just
+// registration, to the tunnel, with no way to selectively exempt normal
+// calls at that layer. chan_iax2 listening on its default 0.0.0.0
+// already receives and replies to inbound tunnel traffic fine on its
+// own). It does, however, own iax.conf's bindport — see
+// iax2bindport.go's own doc comment for why that one has to change:
+// AllStarLink's own directory dials the self-reported port from
+// registration, not chan_iax2's default, so it has to match the port
+// the cloud's DNAT rule is actually forwarding for this device.
 type Manager struct {
 	mu           sync.Mutex
 	backend      Backend
+	iax2         Iax2Configurer
 	settings     *SettingsStore
 	currentGrant Grant
 	applied      bool
@@ -42,9 +47,14 @@ type Manager struct {
 // SetBackend swaps in the real detected backend later (see
 // (*server.Server).StartRelayManager), so constructing a Manager never
 // shells out, matching internal/wifi.NewManager's own contract.
-func NewManager(settings *SettingsStore) *Manager {
+// iaxConfPath is the node's own iax.conf (ordinarily
+// /etc/asterisk/iax.conf); pass "" in tests that never apply a Grant
+// with a nonzero ExternalPort, since ApplyBindport is skipped entirely
+// in that case.
+func NewManager(settings *SettingsStore, iaxConfPath string) *Manager {
 	return &Manager{
 		backend:  unavailableBackend{},
+		iax2:     &realIax2Configurer{iaxConfPath: iaxConfPath, settings: settings},
 		settings: settings,
 	}
 }
@@ -59,6 +69,15 @@ func (m *Manager) Backend() Backend {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.backend
+}
+
+// SetIax2Configurer overrides the default iax.conf bindport handling —
+// exposed only for tests (see manager_test.go's fakeIax2Configurer);
+// production code always uses the realIax2Configurer NewManager builds.
+func (m *Manager) SetIax2Configurer(c Iax2Configurer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.iax2 = c
 }
 
 // Settings exposes the settings store so internal/server's relay
@@ -111,6 +130,7 @@ func (m *Manager) PublicKeyForHello(ctx context.Context) (string, bool, error) {
 func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 	m.mu.Lock()
 	backend := m.backend
+	iax2 := m.iax2
 	m.mu.Unlock()
 
 	settings, err := m.settings.Load()
@@ -123,6 +143,12 @@ func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 
 	if err := backend.ApplyTunnel(ctx, settings.PrivateKey, grant); err != nil {
 		return fmt.Errorf("applying wireguard tunnel: %w", err)
+	}
+
+	if grant.ExternalPort != 0 {
+		if err := iax2.ApplyBindport(ctx, grant.ExternalPort); err != nil {
+			return fmt.Errorf("configuring iax2's bindport for the relay: %w", err)
+		}
 	}
 
 	m.mu.Lock()
@@ -143,6 +169,7 @@ func (m *Manager) ApplyGrant(ctx context.Context, grant Grant) error {
 func (m *Manager) Disable(ctx context.Context) error {
 	m.mu.Lock()
 	backend := m.backend
+	iax2 := m.iax2
 	applied := m.applied
 	m.mu.Unlock()
 
@@ -152,6 +179,10 @@ func (m *Manager) Disable(ctx context.Context) error {
 
 	if err := backend.TeardownInterface(ctx); err != nil {
 		return fmt.Errorf("tearing down relay interface: %w", err)
+	}
+
+	if err := iax2.RestoreBindport(ctx); err != nil {
+		return fmt.Errorf("restoring iax2's bindport: %w", err)
 	}
 
 	m.mu.Lock()

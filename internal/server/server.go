@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -177,7 +178,14 @@ func New(authMgr *auth.Manager, templatesFS, staticFS fs.FS, asteriskDir, asteri
 	soundsStore := sounds.New(soundsCustomDir, soundsStockDir, soxTool)
 	soundScheduleStore := soundschedule.New(soundSchedulePath)
 	wxTonesStore := wxtone.New(wxTonesPath)
-	relayManager := relay.NewManager(relay.NewSettingsStore(relaySettingsPath))
+	// Same "" -> /etc/asterisk default as config.Store's own Dir, since
+	// asteriskDir is that exact override -- iax.conf always lives
+	// alongside rpt.conf/usbradio.conf/simpleusb.conf.
+	iaxConfDir := asteriskDir
+	if iaxConfDir == "" {
+		iaxConfDir = "/etc/asterisk"
+	}
+	relayManager := relay.NewManager(relay.NewSettingsStore(relaySettingsPath), filepath.Join(iaxConfDir, "iax.conf"))
 
 	s := &Server{
 		auth:           authMgr,
