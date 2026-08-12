@@ -219,10 +219,27 @@ func applyPolicyRouting(ctx context.Context) error {
 	if _, err := runCmd(ctx, "ip", "route", "replace", "default", "dev", relayIface, "table", policyRouteTable); err != nil {
 		return fmt.Errorf("adding policy route: %w", err)
 	}
+	// Marking and routing alone aren't enough: a packet policy-routed
+	// out relayIface still carries whatever source address the kernel
+	// picked during the *original* (pre-mark) routing lookup -- this
+	// node's real LAN address, not the tunnel's own. Confirmed on real
+	// hardware via tcpdump directly on wg-relay: the captured packet's
+	// source was the node's real 10.x LAN IP, not its tunnel IP.
+	// Without rewriting it, the cloud's own MASQUERADE (scoped to the
+	// tunnel subnet) never matches it either, so it leaves the cloud's
+	// uplink still carrying a private, non-internet-routable address
+	// with nowhere for a reply to come back to. MASQUERADE (not a fixed
+	// SNAT) so this keeps working automatically if the tunnel's
+	// assigned address ever changes across a reconnect.
+	_, _ = runCmd(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE")
+	if _, err := runCmd(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE"); err != nil {
+		return fmt.Errorf("masquerading traffic leaving %s: %w", relayIface, err)
+	}
 	return nil
 }
 
 func removePolicyRouting(ctx context.Context) {
+	_, _ = runCmd(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE")
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
