@@ -161,6 +161,12 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 	if err := applyPolicyRouting(ctx, cloudHost); err != nil {
 		return fmt.Errorf("routing asterisk's own traffic through %s: %w", relayIface, err)
 	}
+	if grant.ExternalPort != 0 {
+		removeStaleIax2SNAT(ctx)
+		if err := pinIax2SourcePort(ctx, grant.TunnelIP, grant.ExternalPort); err != nil {
+			return fmt.Errorf("pinning chan_iax2's own source port through %s: %w", relayIface, err)
+		}
+	}
 	return nil
 }
 
@@ -174,6 +180,7 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 // working default route) even after the tunnel itself is gone.
 func (wgBackend) TeardownInterface(ctx context.Context) error {
 	removePolicyRouting(ctx)
+	removeStaleIax2SNAT(ctx)
 	if !interfaceExists(ctx, relayIface) {
 		return nil
 	}
@@ -316,6 +323,58 @@ func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", dnsPort, "-j", "RETURN")
 	for _, cidr := range privateDestinationRanges {
 		_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-d", cidr, "-j", "RETURN")
+	}
+}
+
+// pinIax2SourcePort keeps chan_iax2's own outbound UDP traffic through
+// relayIface sourced from tunnelIP:iaxPort -- its single bound local
+// port, matching what the cloud's own PREROUTING DNAT rule expects and
+// what a calling station's own NAT is only willing to accept a reply
+// from. The general MASQUERADE rule below (applied by
+// applyPolicyRouting) isn't enough on its own: confirmed on a real
+// deployment that it doesn't reliably preserve the original source
+// port for this traffic, instead picking a different one seemingly at
+// random on each retry -- the same class of bug already fixed once on
+// the cloud side's own general subnet-wide MASQUERADE (see
+// relayNetwork.ts's addNat there). Inserted at position 1 in
+// POSTROUTING (not appended), so it's matched before the general
+// MASQUERADE rule, the same "explicit beats general" ordering used
+// there too.
+func pinIax2SourcePort(ctx context.Context, tunnelIP string, iaxPort int) error {
+	port := fmt.Sprintf("%d", iaxPort)
+	spec := []string{"-o", relayIface, "-p", "udp", "--sport", port, "-j", "SNAT", "--to-source", tunnelIP + ":" + port}
+	_, _ = runCmd(ctx, "iptables", append([]string{"-t", "nat", "-D", "POSTROUTING"}, spec...)...)
+	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-I", "POSTROUTING", "1"}, spec...)...); err != nil {
+		return fmt.Errorf("pinning chan_iax2's own source port: %w", err)
+	}
+	return nil
+}
+
+// removeStaleIax2SNAT deletes every POSTROUTING SNAT rule this package
+// has ever added for relayIface, regardless of which port it pinned --
+// used at teardown (TeardownInterface has no Grant to know which port
+// was last in effect) and lets a reconnect that lands on a different
+// relay slot's port clean up the previous port's rule too, rather than
+// leaving it stacked underneath the new one. Lists rules in their exact
+// addable form (`-S`) and deletes each match by that same exact spec --
+// `-D` only removes a rule identical to what's given, so guessing at
+// the shape wouldn't reliably find one added with a different port.
+func removeStaleIax2SNAT(ctx context.Context) {
+	out, err := runCmd(ctx, "iptables", "-t", "nat", "-S", "POSTROUTING")
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "-o "+relayIface) || !strings.Contains(line, "-j SNAT") {
+			continue
+		}
+		args := strings.Fields(line)
+		if len(args) == 0 || args[0] != "-A" {
+			continue
+		}
+		args[0] = "-D"
+		delArgs := append([]string{"-t", "nat"}, args...)
+		_, _ = runCmd(ctx, "iptables", delArgs...)
 	}
 }
 
