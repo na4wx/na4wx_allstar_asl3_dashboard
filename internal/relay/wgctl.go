@@ -38,6 +38,22 @@ const (
 	policyFwMark       = "0x2a"
 	policyRulePriority = "100"
 
+	// replyFwMark marks a *reply* to an inbound call that arrived via
+	// relayIface, so it can be routed back out the same way -- see the
+	// CONNMARK rules in applyPolicyRouting's own doc comment for why
+	// this exists: chan_iax2's socket is bound to 0.0.0.0, so an
+	// inbound frame is received fine regardless of which interface it
+	// arrives on, but Linux does not automatically reply out the same
+	// interface a wildcard-bound UDP socket received a packet on --
+	// only the destination IP drives a plain routing-table lookup, and
+	// an arbitrary calling station's real address was never going to
+	// match anything routed toward relayIface. Confirmed on real
+	// hardware: Asterisk logged sending its own CTOKEN challenge frame,
+	// but it never appeared in a capture on relayIface at all, so the
+	// calling station just kept retransmitting its original request
+	// forever, never receiving a reply.
+	replyFwMark = "0x2c"
+
 	// wgTransportPriority prevents a routing loop: WireGuard's own outer
 	// encrypted packets, addressed to the peer's endpoint (the cloud's
 	// public IP), are ordinary locally-generated UDP traffic from the
@@ -249,6 +265,31 @@ func applyPolicyRouting(ctx context.Context, cloudHost string) error {
 	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", policyFwMark, "table", policyRouteTable, "priority", policyRulePriority); err != nil {
 		return fmt.Errorf("adding policy routing rule: %w", err)
 	}
+
+	// Reply routing, so chan_iax2's own replies to an inbound call that
+	// arrived via the tunnel go back out the same way -- see
+	// replyFwMark's own doc comment for why this is needed at all.
+	// CONNMARK --set-mark tags the *connection* (conntrack entry, which
+	// exists for UDP too, tracked as a pseudo-connection keyed by the
+	// 5-tuple) the moment a packet arrives on relayIface; CONNMARK
+	// --restore-mark, inserted first in OUTPUT, then copies that same
+	// mark onto any locally-generated packet belonging to that same
+	// connection -- including chan_iax2's reply, sent from an entirely
+	// different code path than the registration traffic marked below,
+	// which never touches relayIface's own arrival marking at all.
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark)
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark); err != nil {
+		return fmt.Errorf("marking connections arriving via %s: %w", relayIface, err)
+	}
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-j", "CONNMARK", "--restore-mark")
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "1", "-j", "CONNMARK", "--restore-mark"); err != nil {
+		return fmt.Errorf("restoring connection marks onto reply traffic: %w", err)
+	}
+	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", replyFwMark, "table", policyRouteTable)
+	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", replyFwMark, "table", policyRouteTable, "priority", policyRulePriority); err != nil {
+		return fmt.Errorf("adding reply policy routing rule: %w", err)
+	}
+
 	if _, err := runCmd(ctx, "ip", "route", "replace", "default", "dev", relayIface, "table", policyRouteTable); err != nil {
 		return fmt.Errorf("adding policy route: %w", err)
 	}
@@ -274,6 +315,9 @@ func applyPolicyRouting(ctx context.Context, cloudHost string) error {
 func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE")
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
+	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", replyFwMark, "table", policyRouteTable)
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-j", "CONNMARK", "--restore-mark")
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "priority", wgTransportPriority)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "tcp", "--dport", registrationPort, "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)

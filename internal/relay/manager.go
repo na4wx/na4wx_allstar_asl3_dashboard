@@ -28,12 +28,17 @@ const relayReconcileInterval = 5 * time.Minute
 // the tunnel's private IP couples ALL of its traffic, not just
 // registration, to the tunnel, with no way to selectively exempt normal
 // calls at that layer. chan_iax2 listening on its default 0.0.0.0
-// already receives and replies to inbound tunnel traffic fine on its
-// own). It does, however, own iax.conf's bindport — see
+// receives inbound tunnel traffic fine on its own, but *replying* to it
+// needed its own fix too, since a wildcard-bound socket doesn't
+// automatically send a reply back out the interface a request arrived
+// on — see wgctl.go's replyFwMark for the CONNMARK-based routing that
+// makes that work). It does, however, own iax.conf's bindport — see
 // iax2bindport.go's own doc comment for why that one has to change:
-// AllStarLink's own directory dials the self-reported port from
-// registration, not chan_iax2's default, so it has to match the port
-// the cloud's DNAT rule is actually forwarding for this device.
+// AllStarLink's own directory dials whatever port is set on the node's
+// own profile at allstarlink.org (confirmed on a real deployment — not
+// anything self-reported over the wire, an earlier theory that turned
+// out to be wrong), so chan_iax2 has to actually be listening on that
+// same port for a real inbound call to land anywhere.
 type Manager struct {
 	mu           sync.Mutex
 	backend      Backend
