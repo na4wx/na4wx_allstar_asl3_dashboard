@@ -38,22 +38,6 @@ const (
 	policyFwMark       = "0x2a"
 	policyRulePriority = "100"
 
-	// replyFwMark marks a *reply* to an inbound call that arrived via
-	// relayIface, so it can be routed back out the same way -- see the
-	// CONNMARK rules in applyPolicyRouting's own doc comment for why
-	// this exists: chan_iax2's socket is bound to 0.0.0.0, so an
-	// inbound frame is received fine regardless of which interface it
-	// arrives on, but Linux does not automatically reply out the same
-	// interface a wildcard-bound UDP socket received a packet on --
-	// only the destination IP drives a plain routing-table lookup, and
-	// an arbitrary calling station's real address was never going to
-	// match anything routed toward relayIface. Confirmed on real
-	// hardware: Asterisk logged sending its own CTOKEN challenge frame,
-	// but it never appeared in a capture on relayIface at all, so the
-	// calling station just kept retransmitting its original request
-	// forever, never receiving a reply.
-	replyFwMark = "0x2c"
-
 	// wgTransportPriority prevents a routing loop: WireGuard's own outer
 	// encrypted packets, addressed to the peer's endpoint (the cloud's
 	// public IP), are ordinary locally-generated UDP traffic from the
@@ -200,39 +184,65 @@ func (wgBackend) TeardownInterface(ctx context.Context) error {
 }
 
 // registrationPort is the destination port ASL3's HTTP-based node
-// registration actually uses (HTTPS) -- the *only* thing this package
-// ever routes through the tunnel. Marking by destination port+protocol
-// (an allowlist: mark only this) rather than marking everything from
-// the asterisk user and trying to carve out exemptions for everything
-// that shouldn't go (a blocklist) is a deliberate reversal from an
-// earlier version of this function. The blocklist approach kept finding
-// new gaps on real hardware -- first ordinary IAX2 calls (chan_iax2
-// runs as the same asterisk user), then DNS resolution (queries to a
-// private LAN resolver got routed into a network the cloud has no path
-// back into), and even after exempting both of those by name, a later
-// real outbound call attempt still ended up marked and broken for
-// reasons that were never fully pinned down remotely. Marking only
-// tcp/443 can't ever catch IAX2 (udp/4569, a different protocol *and*
-// port) or DNS (udp/53) by construction -- there's no exemption to get
-// wrong, and no unknown next thing to discover missing.
+// registration actually uses (HTTPS).
 const registrationPort = "443"
 
-// privateDestinationRanges are loopback + every RFC1918 block -- still
-// exempted even under the port-443 allowlist above, in case anything
-// ever needs HTTPS to a local/private destination (unlikely on this
-// box, but cheap insurance -- it has no business going through the
-// tunnel to a cloud that has no route back into a private network it
-// was never part of).
+// dnsPort is excluded even though everything else the asterisk user
+// sends over UDP is now routed through the tunnel (see
+// applyPolicyRouting's own doc comment) -- confirmed on a real
+// deployment as a real gap in an earlier, narrower version of this
+// exclusion list: a query to a *public* DNS resolver isn't caught by
+// privateDestinationRanges below, and has no business going through the
+// tunnel to a cloud with no reason to answer it.
+const dnsPort = "53"
+
+// privateDestinationRanges are loopback + every RFC1918 block -- for
+// anything that doesn't belong going through the tunnel to a cloud that
+// has no route back into a private network it was never part of (e.g. a
+// local DNS resolver on the LAN).
 var privateDestinationRanges = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
 
-// applyPolicyRouting routes only the asterisk user's registration
-// traffic (tcp/443, see registrationPort's own doc comment) through
-// relayIface -- needed because ASL3's node registration is a separate
+// applyPolicyRouting routes the asterisk user's registration traffic
+// (tcp/443) *and* all of chan_iax2's own UDP traffic through relayIface
+// -- an allowlist (mark only these two, explicitly, rather than marking
+// everything from the asterisk user and carving out exemptions for what
+// shouldn't go) that has grown by one entry, for two different reasons:
+//
+// Registration needs it because ASL3's node registration is a separate
 // HTTP-based mechanism (res_rpt_http_registrations.so) with no
 // per-application bindaddr option of its own; confirmed directly
 // against that module's source (AllStarLink/app_rpt) that it never sets
 // libcurl's CURLOPT_INTERFACE, so it always uses whatever the OS's
 // normal routing table would pick.
+//
+// IAX2 itself needs it for a completely different reason, confirmed the
+// hard way on a real deployment: chan_iax2's own socket, bound to
+// 0.0.0.0, *receives* an inbound call that arrived via the tunnel just
+// fine regardless of interface -- but *replying* to it doesn't work for
+// free. A wildcard-bound UDP socket's outbound packets get their source
+// address chosen by an ordinary destination-based routing lookup before
+// any netfilter/mangle processing runs at all, so an arbitrary calling
+// station's real address was never going to route toward relayIface,
+// and the reply left (if it left at all) carrying this node's real LAN
+// address, not the tunnel's -- meaningless to a caller whose own NAT is
+// only expecting a reply from the cloud's public IP. A CONNMARK-based
+// fix (mark the inbound connection, restore that mark onto the reply)
+// was tried first and didn't work either: conntrack evaluates the
+// reply's addressing *before* mangle OUTPUT even runs, using whatever
+// source address the kernel already committed to, so it never matches
+// the inbound connection's own tracked tuple in the first place --
+// confirmed via `conntrack -L`, which showed the reply as a distinct,
+// unrelated, unmarked connection entirely. Marking chan_iax2's UDP
+// traffic unconditionally sidesteps the problem: it uses the exact same
+// mechanism already proven to work for registration (a static match,
+// not anything tied to an existing conntrack entry), for both an
+// initial reply *and* a self-initiated outbound call alike. The
+// tradeoff: this node's own calls to other, directly-reachable
+// AllStarLink nodes now also route via the cloud relay while relay is
+// enabled, rather than going direct -- an accepted cost, not a
+// regression, since the cloud already forwards arbitrary destinations
+// for the whole tunnel subnet (see relayNetwork.ts's ensureForwarding
+// on the cloud side).
 //
 // Idempotent: deletes any matching rule left over from a previous run
 // first, same "safe to call again after a crash/restart" pattern as
@@ -257,37 +267,21 @@ func applyPolicyRouting(ctx context.Context, cloudHost string) error {
 			return fmt.Errorf("exempting %s from policy routing: %w", cidr, err)
 		}
 	}
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", dnsPort, "-j", "RETURN")
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "-p", "udp", "--dport", dnsPort, "-j", "RETURN"); err != nil {
+		return fmt.Errorf("exempting DNS from policy routing: %w", err)
+	}
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "tcp", "--dport", registrationPort, "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "OUTPUT", "-p", "tcp", "--dport", registrationPort, "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark); err != nil {
 		return fmt.Errorf("marking asterisk's registration traffic: %w", err)
 	}
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
+	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "OUTPUT", "-p", "udp", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark); err != nil {
+		return fmt.Errorf("marking asterisk's own UDP (IAX2) traffic: %w", err)
+	}
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", policyFwMark, "table", policyRouteTable, "priority", policyRulePriority); err != nil {
 		return fmt.Errorf("adding policy routing rule: %w", err)
-	}
-
-	// Reply routing, so chan_iax2's own replies to an inbound call that
-	// arrived via the tunnel go back out the same way -- see
-	// replyFwMark's own doc comment for why this is needed at all.
-	// CONNMARK --set-mark tags the *connection* (conntrack entry, which
-	// exists for UDP too, tracked as a pseudo-connection keyed by the
-	// 5-tuple) the moment a packet arrives on relayIface; CONNMARK
-	// --restore-mark, inserted first in OUTPUT, then copies that same
-	// mark onto any locally-generated packet belonging to that same
-	// connection -- including chan_iax2's reply, sent from an entirely
-	// different code path than the registration traffic marked below,
-	// which never touches relayIface's own arrival marking at all.
-	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark)
-	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-A", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark); err != nil {
-		return fmt.Errorf("marking connections arriving via %s: %w", relayIface, err)
-	}
-	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-j", "CONNMARK", "--restore-mark")
-	if _, err := runCmd(ctx, "iptables", "-t", "mangle", "-I", "OUTPUT", "1", "-j", "CONNMARK", "--restore-mark"); err != nil {
-		return fmt.Errorf("restoring connection marks onto reply traffic: %w", err)
-	}
-	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", replyFwMark, "table", policyRouteTable)
-	if _, err := runCmd(ctx, "ip", "rule", "add", "fwmark", replyFwMark, "table", policyRouteTable, "priority", policyRulePriority); err != nil {
-		return fmt.Errorf("adding reply policy routing rule: %w", err)
 	}
 
 	if _, err := runCmd(ctx, "ip", "route", "replace", "default", "dev", relayIface, "table", policyRouteTable); err != nil {
@@ -315,12 +309,11 @@ func applyPolicyRouting(ctx context.Context, cloudHost string) error {
 func removePolicyRouting(ctx context.Context) {
 	_, _ = runCmd(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-o", relayIface, "-j", "MASQUERADE")
 	_, _ = runCmd(ctx, "ip", "route", "del", "default", "dev", relayIface, "table", policyRouteTable)
-	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", replyFwMark, "table", policyRouteTable)
-	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-j", "CONNMARK", "--restore-mark")
-	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "PREROUTING", "-i", relayIface, "-j", "CONNMARK", "--set-mark", replyFwMark)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "fwmark", policyFwMark, "table", policyRouteTable)
 	_, _ = runCmd(ctx, "ip", "rule", "del", "priority", wgTransportPriority)
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
 	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "tcp", "--dport", registrationPort, "-m", "owner", "--uid-owner", asteriskUser, "-j", "MARK", "--set-mark", policyFwMark)
+	_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-p", "udp", "--dport", dnsPort, "-j", "RETURN")
 	for _, cidr := range privateDestinationRanges {
 		_, _ = runCmd(ctx, "iptables", "-t", "mangle", "-D", "OUTPUT", "-d", cidr, "-j", "RETURN")
 	}

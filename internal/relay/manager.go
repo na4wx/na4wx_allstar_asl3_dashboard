@@ -18,21 +18,18 @@ const relayReconcileInterval = 5 * time.Minute
 
 // Manager owns this node's relay tunnel state: applying a Grant handed
 // back by the cloud (bringing the WireGuard interface up and routing
-// Asterisk's non-IAX2 outbound traffic through it — see wgctl.go's
-// applyPolicyRouting for exactly what that covers and why), and
-// reversing all of that when the operator disables the feature
-// locally. Deliberately does NOT touch chan_iax2's own bindaddr (an
-// earlier version of this pointed iax.conf's bindaddr at the tunnel IP
-// — removed after confirming on real hardware that it broke ordinary
-// outbound dialing to other nodes: binding chan_iax2's own socket to
-// the tunnel's private IP couples ALL of its traffic, not just
-// registration, to the tunnel, with no way to selectively exempt normal
-// calls at that layer. chan_iax2 listening on its default 0.0.0.0
-// receives inbound tunnel traffic fine on its own, but *replying* to it
-// needed its own fix too, since a wildcard-bound socket doesn't
-// automatically send a reply back out the interface a request arrived
-// on — see wgctl.go's replyFwMark for the CONNMARK-based routing that
-// makes that work). It does, however, own iax.conf's bindport — see
+// Asterisk's own traffic through it — see wgctl.go's applyPolicyRouting
+// for exactly what that covers and why, including chan_iax2's own UDP
+// traffic, not just HTTP registration), and reversing all of that when
+// the operator disables the feature locally. Deliberately does NOT
+// touch chan_iax2's own bindaddr (an earlier version of this pointed
+// iax.conf's bindaddr at the tunnel IP — removed after confirming on
+// real hardware that it broke ordinary outbound dialing to other nodes:
+// binding chan_iax2's own socket to the tunnel's private IP couples ALL
+// of its traffic to the tunnel with no way to selectively exempt it,
+// the same failure mode applyPolicyRouting's own IAX2 marking
+// deliberately avoids by using a routing rule instead of a bind
+// address). It does, however, own iax.conf's bindport — see
 // iax2bindport.go's own doc comment for why that one has to change:
 // AllStarLink's own directory dials whatever port is set on the node's
 // own profile at allstarlink.org (confirmed on a real deployment — not
