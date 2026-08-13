@@ -162,7 +162,6 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 		return fmt.Errorf("routing asterisk's own traffic through %s: %w", relayIface, err)
 	}
 	if grant.ExternalPort != 0 {
-		removeStaleIax2SNAT(ctx)
 		if err := pinIax2SourcePort(ctx, grant.TunnelIP, grant.ExternalPort); err != nil {
 			return fmt.Errorf("pinning chan_iax2's own source port through %s: %w", relayIface, err)
 		}
@@ -340,10 +339,26 @@ func removePolicyRouting(ctx context.Context) {
 // POSTROUTING (not appended), so it's matched before the general
 // MASQUERADE rule, the same "explicit beats general" ordering used
 // there too.
+//
+// Checks whether the exact rule already exists before touching
+// anything, rather than unconditionally deleting and re-inserting on
+// every call -- this runs on every hello/reconcile (every few minutes,
+// or more often across a reconnect), and a blind delete+insert resets
+// the rule's own packet counter each time even though the rule itself
+// never stopped working, which made that counter useless for
+// diagnosing real hardware: it read "0 packets matched" after every
+// routine reconcile, indistinguishable from a rule that had never
+// fired at all. Only reaches for removeStaleIax2SNAT (clearing out a
+// *different*, no-longer-correct pin -- e.g. after a reconnect lands on
+// a different relay slot's port) when the current one isn't already
+// exactly right.
 func pinIax2SourcePort(ctx context.Context, tunnelIP string, iaxPort int) error {
 	port := fmt.Sprintf("%d", iaxPort)
 	spec := []string{"-o", relayIface, "-p", "udp", "--sport", port, "-j", "SNAT", "--to-source", tunnelIP + ":" + port}
-	_, _ = runCmd(ctx, "iptables", append([]string{"-t", "nat", "-D", "POSTROUTING"}, spec...)...)
+	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-C", "POSTROUTING"}, spec...)...); err == nil {
+		return nil
+	}
+	removeStaleIax2SNAT(ctx)
 	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-I", "POSTROUTING", "1"}, spec...)...); err != nil {
 		return fmt.Errorf("pinning chan_iax2's own source port: %w", err)
 	}
