@@ -165,6 +165,9 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 		if err := pinIax2SourcePort(ctx, grant.TunnelIP, grant.ExternalPort); err != nil {
 			return fmt.Errorf("pinning chan_iax2's own source port through %s: %w", relayIface, err)
 		}
+		if err := applyDirectReplyRedirect(ctx, cloudHost, grant.ExternalPort); err != nil {
+			return fmt.Errorf("redirecting chan_iax2's replies to the cloud's direct-reply port: %w", err)
+		}
 	}
 	return nil
 }
@@ -180,6 +183,7 @@ func (wgBackend) ApplyTunnel(ctx context.Context, privateKey string, grant Grant
 func (wgBackend) TeardownInterface(ctx context.Context) error {
 	removePolicyRouting(ctx)
 	removeStaleIax2SNAT(ctx)
+	removeDirectReplyRedirect(ctx)
 	if !interfaceExists(ctx, relayIface) {
 		return nil
 	}
@@ -390,6 +394,121 @@ func removeStaleIax2SNAT(ctx context.Context) {
 		args[0] = "-D"
 		delArgs := append([]string{"-t", "nat"}, args...)
 		_, _ = runCmd(ctx, "iptables", delArgs...)
+	}
+}
+
+// directReplyPortOffset mirrors the cloud's own deterministic
+// derivation (relayDirectReply.ts's own directReplyPort) -- both sides
+// compute the same value independently from the grant's own
+// ExternalPort, with no protocol change needed.
+const directReplyPortOffset = 10000
+
+func directReplyPort(iaxPort int) int {
+	return iaxPort + directReplyPortOffset
+}
+
+// applyDirectReplyRedirect works around a real, unexplained bug in the
+// WireGuard-tunneled reply path for inbound calls: a reply to an
+// inbound call, sent back through the same tunnel the call arrived on,
+// was proven -- via a controlled, isolating test on a real deployment
+// -- to be lost between this node and the cloud, every single time,
+// while a genuinely new, outbound-initiated call (no pre-existing
+// inbound connection to reply to) using the exact same tunnel, port,
+// and process completed normally, full setup through ANSWER and
+// sustained two-way traffic. The root cause was never identified
+// despite ruling out NAT clash resolution, AllowedIPs, interface-level
+// drops on both ends, the FORWARD chain, routing, kernel UDP-layer
+// errors, WireGuard handshake stability, and conntrack state -- each
+// individually confirmed clean or working via a live test.
+//
+// This sidesteps the mystery rather than solving it. chan_iax2's own
+// reply to an inbound call matches ctstate ESTABLISHED -- the
+// connection the inbound NEW request itself already created when it
+// arrived via the tunnel (no NAT needed on this node for that
+// direction, since it's already correctly addressed to this node's own
+// tunnel IP). Such a reply is exempted from policy routing entirely (an
+// early mangle OUTPUT RETURN, checked before applyPolicyRouting's own
+// general UDP mark rule) and instead DNAT'd, in nat OUTPUT, to the
+// cloud's own public IP on a dedicated port -- see the cloud repo's
+// relayDirectReply.ts, which receives it there and re-sends the
+// payload to whichever caller its own conntrack state says this device
+// is currently talking to, sourced from this device's normal
+// externally-advertised address, so the packet leaves this node over
+// its own ordinary internet connection rather than the tunnel at all.
+//
+// A genuinely new, outbound-initiated call (chan_iax2 dialing another
+// node -- confirmed working via the isolating test mentioned above) has
+// no pre-existing ESTABLISHED connection to match, so it's untouched by
+// this and still routes through the tunnel as before, keeping its own
+// source port pinned by pinIax2SourcePort.
+func applyDirectReplyRedirect(ctx context.Context, cloudHost string, iaxPort int) error {
+	port := fmt.Sprintf("%d", iaxPort)
+	directPort := fmt.Sprintf("%d", directReplyPort(iaxPort))
+
+	returnSpec := []string{"-p", "udp", "--sport", port, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "RETURN"}
+	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "mangle", "-C", "OUTPUT"}, returnSpec...)...); err != nil {
+		if _, err := runCmd(ctx, "iptables", append([]string{"-t", "mangle", "-I", "OUTPUT", "1"}, returnSpec...)...); err != nil {
+			return fmt.Errorf("exempting established chan_iax2 replies from policy routing: %w", err)
+		}
+	}
+
+	dnatSpec := []string{"-p", "udp", "--sport", port, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "DNAT", "--to-destination", cloudHost + ":" + directPort}
+	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-C", "OUTPUT"}, dnatSpec...)...); err == nil {
+		return nil
+	}
+	// Not already correct -- clean up a differently-shaped rule first
+	// (e.g. cloudHost or the port changed across a reconnect), same
+	// "-S then delete by exact spec" pattern as removeStaleIax2SNAT.
+	if out, err := runCmd(ctx, "iptables", "-t", "nat", "-S", "OUTPUT"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if !strings.Contains(line, "--sport "+port+" ") || !strings.Contains(line, "-j DNAT") {
+				continue
+			}
+			args := strings.Fields(line)
+			if len(args) == 0 || args[0] != "-A" {
+				continue
+			}
+			args[0] = "-D"
+			_, _ = runCmd(ctx, "iptables", append([]string{"-t", "nat"}, args...)...)
+		}
+	}
+	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-A", "OUTPUT"}, dnatSpec...)...); err != nil {
+		return fmt.Errorf("redirecting chan_iax2's replies to the cloud's direct-reply port: %w", err)
+	}
+	return nil
+}
+
+// removeDirectReplyRedirect deletes every rule applyDirectReplyRedirect
+// has ever added, regardless of which port/cloudHost was last in effect
+// -- used at teardown (TeardownInterface has no Grant to know either)
+// and lets a reconnect that lands on a different relay slot's port or a
+// different cloud host clean up the previous shape too.
+func removeDirectReplyRedirect(ctx context.Context) {
+	if out, err := runCmd(ctx, "iptables", "-t", "nat", "-S", "OUTPUT"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if !strings.Contains(line, "-j DNAT") || !strings.Contains(line, "ESTABLISHED") {
+				continue
+			}
+			args := strings.Fields(line)
+			if len(args) == 0 || args[0] != "-A" {
+				continue
+			}
+			args[0] = "-D"
+			_, _ = runCmd(ctx, "iptables", append([]string{"-t", "nat"}, args...)...)
+		}
+	}
+	if out, err := runCmd(ctx, "iptables", "-t", "mangle", "-S", "OUTPUT"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if !strings.Contains(line, "-j RETURN") || !strings.Contains(line, "ESTABLISHED") {
+				continue
+			}
+			args := strings.Fields(line)
+			if len(args) == 0 || args[0] != "-A" {
+				continue
+			}
+			args[0] = "-D"
+			_, _ = runCmd(ctx, "iptables", append([]string{"-t", "mangle"}, args...)...)
+		}
 	}
 }
 

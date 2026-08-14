@@ -12,20 +12,28 @@
 // "bind to this interface" option of its own (confirmed directly
 // against that module's source, AllStarLink/app_rpt: it never sets
 // libcurl's CURLOPT_INTERFACE, so it always uses whatever the OS's
-// normal routing table would pick). This package routes only that
-// specific traffic (tcp/443 from the asterisk user) through the tunnel
-// via OS-level policy routing -- see wgctl.go's applyPolicyRouting for
-// exactly what that covers and why it's an *allowlist* (mark only
-// tcp/443) rather than marking everything from the asterisk user and
-// trying to carve out exemptions for what shouldn't go. The blocklist
-// shape was tried first and kept finding new gaps on real hardware:
-// ordinary IAX2 calls (chan_iax2 runs as the same asterisk user), DNS
-// resolution, and even after exempting both by name, a later real call
-// attempt still ended up marked and broken for reasons never fully
-// pinned down remotely. Marking only tcp/443 can't ever catch IAX2 or
-// DNS by construction. chan_iax2 itself needs no configuration change
-// at all -- listening on its default 0.0.0.0 already receives and
-// replies to inbound tunnel traffic correctly on its own.
+// normal routing table would pick). wgctl.go's applyPolicyRouting
+// routes that traffic, plus all of chan_iax2's own UDP (an allowlist,
+// not a blocklist -- see that function's own doc comment for why an
+// earlier blocklist version kept finding new gaps on real hardware),
+// through the tunnel via OS-level policy routing.
+//
+// Replying to an inbound call needed one more piece, discovered only
+// after an extensive, evidence-driven investigation on a real
+// deployment: chan_iax2's own reply to an inbound call, sent back
+// through the same tunnel the call arrived on, was reliably lost
+// somewhere between this node and the cloud -- while a genuinely new,
+// outbound-initiated call over the exact same tunnel worked perfectly.
+// The root cause was never identified despite ruling out NAT clash
+// resolution, AllowedIPs, interface-level drops, the FORWARD chain,
+// routing, kernel UDP-layer errors, WireGuard handshake stability, and
+// conntrack state. wgctl.go's applyDirectReplyRedirect sidesteps this
+// rather than solving it: a reply to an inbound call (identified by
+// ctstate ESTABLISHED, distinguishing it from a genuinely new outbound
+// call) is redirected to leave over this node's own ordinary internet
+// connection instead of the tunnel, addressed to a dedicated port on
+// the cloud -- see the cloud repo's relayDirectReply.ts, which receives
+// it and re-sends it to the correct caller.
 //
 // Provisioning rides the existing cloudagent hello/helloAck handshake
 // (see internal/cloudagent/protocol.go's RelayPublicKey/Relay fields)
