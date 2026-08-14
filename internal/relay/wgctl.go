@@ -407,6 +407,18 @@ func directReplyPort(iaxPort int) int {
 	return iaxPort + directReplyPortOffset
 }
 
+// conventionalIax2Port is chan_iax2's own well-known default port --
+// real, directly-dialable AllStarLink nodes listen here (confirmed via
+// a real outbound test call: "Call accepted by 104.232.32.242:4569").
+// applyDirectReplyRedirect uses it as a destination-port heuristic (see
+// that function's own doc comment for why a conntrack-based one didn't
+// work): a calling station's own reply-destination is its own
+// arbitrary ephemeral source port, essentially never this one, so
+// "anything chan_iax2 sends that ISN'T addressed to 4569" reliably
+// picks out a reply to an inbound call without depending on conntrack
+// at all.
+const conventionalIax2Port = "4569"
+
 // applyDirectReplyRedirect works around a real, unexplained bug in the
 // WireGuard-tunneled reply path for inbound calls: a reply to an
 // inbound call, sent back through the same tunnel the call arrived on,
@@ -421,38 +433,62 @@ func directReplyPort(iaxPort int) int {
 // errors, WireGuard handshake stability, and conntrack state -- each
 // individually confirmed clean or working via a live test.
 //
-// This sidesteps the mystery rather than solving it. chan_iax2's own
-// reply to an inbound call matches ctstate ESTABLISHED -- the
-// connection the inbound NEW request itself already created when it
-// arrived via the tunnel (no NAT needed on this node for that
-// direction, since it's already correctly addressed to this node's own
-// tunnel IP). Such a reply is exempted from policy routing entirely (an
+// This sidesteps the mystery rather than solving it. The first version
+// of this identified a reply to an inbound call via conntrack ctstate
+// ESTABLISHED, matching the connection the inbound NEW request itself
+// already created -- also proven wrong on a real deployment: this
+// node's own conntrack simply never tracked that traffic at all (no
+// entry ever appeared for it in `conntrack -L`, for a reason never
+// identified -- confirmed the nf_conntrack module itself was loaded and
+// actively tracking unrelated traffic fine, so it wasn't that), meaning
+// ESTABLISHED could never match anything and the redirect silently
+// never fired. Replaced with conventionalIax2Port's own destination-
+// port heuristic instead, which depends on nothing but the packet's own
+// header. Such a reply is exempted from policy routing entirely (an
 // early mangle OUTPUT RETURN, checked before applyPolicyRouting's own
 // general UDP mark rule) and instead DNAT'd, in nat OUTPUT, to the
 // cloud's own public IP on a dedicated port -- see the cloud repo's
 // relayDirectReply.ts, which receives it there and re-sends the
 // payload to whichever caller its own conntrack state says this device
-// is currently talking to, sourced from this device's normal
+// is currently talking to (that direction has always tracked
+// correctly, on the cloud), sourced from this device's normal
 // externally-advertised address, so the packet leaves this node over
 // its own ordinary internet connection rather than the tunnel at all.
 //
 // A genuinely new, outbound-initiated call (chan_iax2 dialing another
-// node -- confirmed working via the isolating test mentioned above) has
-// no pre-existing ESTABLISHED connection to match, so it's untouched by
-// this and still routes through the tunnel as before, keeping its own
-// source port pinned by pinIax2SourcePort.
+// node on its own conventional port -- confirmed working via the
+// isolating test mentioned above) is addressed to 4569, so it's
+// untouched by this and still routes through the tunnel as before,
+// keeping its own source port pinned by pinIax2SourcePort.
 func applyDirectReplyRedirect(ctx context.Context, cloudHost string, iaxPort int) error {
 	port := fmt.Sprintf("%d", iaxPort)
 	directPort := fmt.Sprintf("%d", directReplyPort(iaxPort))
 
-	returnSpec := []string{"-p", "udp", "--sport", port, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "RETURN"}
+	returnSpec := []string{"-p", "udp", "--sport", port, "!", "--dport", conventionalIax2Port, "-j", "RETURN"}
 	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "mangle", "-C", "OUTPUT"}, returnSpec...)...); err != nil {
+		// Not already correct -- clean up a differently-shaped rule first
+		// (e.g. an older, conntrack-based version of this same rule from
+		// before an upgrade), same "-S then delete by exact spec" pattern
+		// used for the nat DNAT rule below.
+		if out, err := runCmd(ctx, "iptables", "-t", "mangle", "-S", "OUTPUT"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				if !strings.Contains(line, "--sport "+port+" ") || !strings.Contains(line, "-j RETURN") {
+					continue
+				}
+				args := strings.Fields(line)
+				if len(args) == 0 || args[0] != "-A" {
+					continue
+				}
+				args[0] = "-D"
+				_, _ = runCmd(ctx, "iptables", append([]string{"-t", "mangle"}, args...)...)
+			}
+		}
 		if _, err := runCmd(ctx, "iptables", append([]string{"-t", "mangle", "-I", "OUTPUT", "1"}, returnSpec...)...); err != nil {
-			return fmt.Errorf("exempting established chan_iax2 replies from policy routing: %w", err)
+			return fmt.Errorf("exempting chan_iax2 replies from policy routing: %w", err)
 		}
 	}
 
-	dnatSpec := []string{"-p", "udp", "--sport", port, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "DNAT", "--to-destination", cloudHost + ":" + directPort}
+	dnatSpec := []string{"-p", "udp", "--sport", port, "!", "--dport", conventionalIax2Port, "-j", "DNAT", "--to-destination", cloudHost + ":" + directPort}
 	if _, err := runCmd(ctx, "iptables", append([]string{"-t", "nat", "-C", "OUTPUT"}, dnatSpec...)...); err == nil {
 		return nil
 	}
@@ -482,11 +518,14 @@ func applyDirectReplyRedirect(ctx context.Context, cloudHost string, iaxPort int
 // has ever added, regardless of which port/cloudHost was last in effect
 // -- used at teardown (TeardownInterface has no Grant to know either)
 // and lets a reconnect that lands on a different relay slot's port or a
-// different cloud host clean up the previous shape too.
+// different cloud host clean up the previous shape too. Matches by
+// conventionalIax2Port rather than a leftover "ESTABLISHED" marker from
+// an earlier, conntrack-based version of this rule, so upgrading from
+// that version cleans up its old-shaped rules too.
 func removeDirectReplyRedirect(ctx context.Context) {
 	if out, err := runCmd(ctx, "iptables", "-t", "nat", "-S", "OUTPUT"); err == nil {
 		for _, line := range strings.Split(out, "\n") {
-			if !strings.Contains(line, "-j DNAT") || !strings.Contains(line, "ESTABLISHED") {
+			if !strings.Contains(line, "-j DNAT") || !strings.Contains(line, "dport "+conventionalIax2Port) {
 				continue
 			}
 			args := strings.Fields(line)
@@ -499,7 +538,7 @@ func removeDirectReplyRedirect(ctx context.Context) {
 	}
 	if out, err := runCmd(ctx, "iptables", "-t", "mangle", "-S", "OUTPUT"); err == nil {
 		for _, line := range strings.Split(out, "\n") {
-			if !strings.Contains(line, "-j RETURN") || !strings.Contains(line, "ESTABLISHED") {
+			if !strings.Contains(line, "-j RETURN") || !strings.Contains(line, "dport "+conventionalIax2Port) {
 				continue
 			}
 			args := strings.Fields(line)
