@@ -20,20 +20,39 @@
 //
 // Replying to an inbound call needed one more piece, discovered only
 // after an extensive, evidence-driven investigation on a real
-// deployment: chan_iax2's own reply to an inbound call, sent back
-// through the same tunnel the call arrived on, was reliably lost
-// somewhere between this node and the cloud -- while a genuinely new,
-// outbound-initiated call over the exact same tunnel worked perfectly.
-// The root cause was never identified despite ruling out NAT clash
-// resolution, AllowedIPs, interface-level drops, the FORWARD chain,
-// routing, kernel UDP-layer errors, WireGuard handshake stability, and
-// conntrack state. wgctl.go's applyDirectReplyRedirect sidesteps this
-// rather than solving it: a reply to an inbound call (identified by
-// ctstate ESTABLISHED, distinguishing it from a genuinely new outbound
-// call) is redirected to leave over this node's own ordinary internet
-// connection instead of the tunnel, addressed to a dedicated port on
-// the cloud -- see the cloud repo's relayDirectReply.ts, which receives
-// it and re-sends it to the correct caller.
+// deployment: chan_iax2's own reply to an inbound call, sent directly
+// to the calling station's real address (as it always has been -- the
+// caller's address survives the cloud's own inbound DNAT unchanged),
+// was reliably lost somewhere between this node and the caller, no
+// matter how many different ways it was made to leave this node or the
+// cloud -- while a genuinely new, outbound-initiated call over the
+// exact same tunnel worked perfectly, and the caller's own inbound
+// request always arrived here intact. Every kernel-level NAT/SNAT
+// mechanism tried for this leg failed identically, on both this node
+// and the cloud: the rule matched (confirmed via zeroed, precisely-
+// windowed iptables counters), yet the packet never showed up in a
+// simultaneous, unfiltered capture on the egress interface -- across
+// three structurally different mechanisms (an in-tunnel SNAT reply, a
+// separate out-of-band relay, and that relay again with the colliding
+// conntrack entry explicitly evicted first). That consistent pattern
+// pointed at something outside this package's own rules entirely
+// (plausibly a hypervisor- or provider-level filter on the cloud host,
+// invisible to a local tcpdump), not at any one rule's own shape.
+//
+// The fix sidesteps kernel-level NAT for this leg entirely, rather than
+// continuing to chase it: chan_iax2 never addresses the real caller at
+// all anymore. Its inbound delivery is unchanged (the cloud's own
+// PREROUTING DNAT to this device's tunnel IP, which has never been the
+// unreliable part). Its replies simply go, via chan_iax2's own default
+// routing, to whichever peer sent the inbound packet -- the cloud's own
+// dedicated rendezvous socket on the tunnel interface, not the caller
+// directly -- ordinary WireGuard-routed UDP to a directly-connected
+// tunnel address, the one traffic pattern proven reliable throughout
+// this whole investigation. The cloud's own relayProxy.ts owns both
+// ends of the real, public-facing leg: it remembers which caller is
+// currently talking to this device and relays payloads between that
+// caller and the rendezvous socket, entirely in userspace, with no
+// DNAT/SNAT/conntrack tricks of its own either.
 //
 // Provisioning rides the existing cloudagent hello/helloAck handshake
 // (see internal/cloudagent/protocol.go's RelayPublicKey/Relay fields)
