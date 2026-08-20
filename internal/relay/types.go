@@ -20,39 +20,36 @@
 //
 // Replying to an inbound call needed one more piece, discovered only
 // after an extensive, evidence-driven investigation on a real
-// deployment: chan_iax2's own reply to an inbound call, sent directly
-// to the calling station's real address (as it always has been -- the
-// caller's address survives the cloud's own inbound DNAT unchanged),
-// was reliably lost somewhere between this node and the caller, no
-// matter how many different ways it was made to leave this node or the
-// cloud -- while a genuinely new, outbound-initiated call over the
-// exact same tunnel worked perfectly, and the caller's own inbound
-// request always arrived here intact. Every kernel-level NAT/SNAT
-// mechanism tried for this leg failed identically, on both this node
-// and the cloud: the rule matched (confirmed via zeroed, precisely-
-// windowed iptables counters), yet the packet never showed up in a
-// simultaneous, unfiltered capture on the egress interface -- across
-// three structurally different mechanisms (an in-tunnel SNAT reply, a
-// separate out-of-band relay, and that relay again with the colliding
-// conntrack entry explicitly evicted first). That consistent pattern
-// pointed at something outside this package's own rules entirely
-// (plausibly a hypervisor- or provider-level filter on the cloud host,
-// invisible to a local tcpdump), not at any one rule's own shape.
+// deployment. A userspace relay was tried for *both* directions at one
+// point (routing chan_iax2's inbound delivery through a cloud-owned
+// rendezvous socket instead of kernel DNAT) and worked at the IAX2
+// protocol level, but broke a real, higher-layer requirement: app_rpt's
+// own parse_caller check (app_rpt.c) rejects a call whose channel peer
+// address doesn't match the calling node's own real, directory-
+// registered IP -- confirmed on a real deployment ("Node N IP a.b.c.d
+// does not match link IP e.f.g.h!!"). Inbound delivery has to stay on
+// kernel-level DNAT (the cloud's own PREROUTING rule, which preserves
+// the caller's real source address and has never been the unreliable
+// part of any of this) so chan_iax2 genuinely sees the real caller as
+// its peer.
 //
-// The fix sidesteps kernel-level NAT for this leg entirely, rather than
-// continuing to chase it: chan_iax2 never addresses the real caller at
-// all anymore. Its inbound delivery is unchanged (the cloud's own
-// PREROUTING DNAT to this device's tunnel IP, which has never been the
-// unreliable part). Its replies simply go, via chan_iax2's own default
-// routing, to whichever peer sent the inbound packet -- the cloud's own
-// dedicated rendezvous socket on the tunnel interface, not the caller
-// directly -- ordinary WireGuard-routed UDP to a directly-connected
-// tunnel address, the one traffic pattern proven reliable throughout
-// this whole investigation. The cloud's own relayProxy.ts owns both
-// ends of the real, public-facing leg: it remembers which caller is
-// currently talking to this device and relays payloads between that
-// caller and the rendezvous socket, entirely in userspace, with no
-// DNAT/SNAT/conntrack tricks of its own either.
+// That in turn means chan_iax2's own reply is naturally addressed back
+// to that real caller -- and sending that reply, unmodified, out this
+// node's own tunnel interface was proven, via a controlled, isolating
+// test, to be lost between this node and the cloud, every single time,
+// while a genuinely new, outbound-initiated call over the exact same
+// tunnel worked perfectly. wgctl.go's applyDirectReplyRedirect
+// sidesteps this rather than solving it: such a reply (identified by a
+// destination-port heuristic, not conntrack -- see that function's own
+// doc comment for why) is redirected to leave over this node's own
+// ordinary internet connection instead of the tunnel, addressed to a
+// dedicated port on the cloud -- see the cloud repo's
+// relayDirectReply.ts, which receives it and re-sends it to the correct
+// caller. The root cause of the original in-tunnel loss was never
+// conclusively identified, though two later, unrelated discoveries on
+// the cloud side (a stale-NAT-rule accumulation bug and a missing
+// INPUT-chain allow, both now fixed) may well explain at least some of
+// what made this so hard to pin down.
 //
 // Provisioning rides the existing cloudagent hello/helloAck handshake
 // (see internal/cloudagent/protocol.go's RelayPublicKey/Relay fields)
