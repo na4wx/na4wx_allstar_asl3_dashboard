@@ -400,8 +400,14 @@ func removeStaleIax2SNAT(ctx context.Context) {
 // directReplyPortOffset mirrors the cloud's own deterministic
 // derivation (relayDirectReply.ts's own directReplyPort) -- both sides
 // compute the same value independently from the grant's own
-// ExternalPort, with no protocol change needed.
-const directReplyPortOffset = 10000
+// ExternalPort, with no protocol change needed. +1000, not +10000 --
+// confirmed on a real deployment that a wider offset landed the
+// cloud's own reply-sending port inside 49152-65535, which collided
+// with a TURN relay server (coturn) also running on that host and
+// produced a synchronous EPERM on every send from a port in that
+// range; see relayDirectReply.ts's own doc comment on the cloud side
+// for the full isolation story.
+const directReplyPortOffset = 1000
 
 func directReplyPort(iaxPort int) int {
 	return iaxPort + directReplyPortOffset
